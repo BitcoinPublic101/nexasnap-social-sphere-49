@@ -73,25 +73,27 @@ serve(async (req) => {
       throw profileError;
     }
     
-    if (!profileData) {
+    let userProfileData = {
+      is_premium: false,
+      is_squad_creator: false
+    };
+    
+    if (profileData) {
+      userProfileData = profileData;
+    } else {
       console.warn(`No profile found for user ${user.id}`);
-      // Create a default profile response if not found
-      profileData = {
-        is_premium: false,
-        is_squad_creator: false
-      };
     }
     
     const now = new Date();
     const hasActiveSubscription = subscriptionData && 
       new Date(subscriptionData.expires_at) > now;
     
-    console.log(`User ${user.id} subscription status: active=${hasActiveSubscription}, premium=${profileData.is_premium}`);
+    console.log(`User ${user.id} subscription status: active=${hasActiveSubscription}, premium=${userProfileData.is_premium}`);
 
     return new Response(
       JSON.stringify({
-        isPremium: profileData.is_premium || (hasActiveSubscription && subscriptionData.subscription_type === "premium"),
-        isSquadCreator: profileData.is_squad_creator || (hasActiveSubscription && subscriptionData.subscription_type === "squad_creator"),
+        isPremium: userProfileData.is_premium || (hasActiveSubscription && subscriptionData.subscription_type === "premium"),
+        isSquadCreator: userProfileData.is_squad_creator || (hasActiveSubscription && subscriptionData.subscription_type === "squad_creator"),
         subscription: subscriptionData || null,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }

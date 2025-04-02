@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import CreatePostCard from '@/components/CreatePostCard';
 import { PostWithAuthor } from '@/types/supabase-custom';
 import { useToast } from '@/hooks/use-toast';
+import { useNavigate } from 'react-router-dom';
 
 interface FeedProps {
   initialTab?: string;
@@ -25,6 +26,7 @@ const Feed = () => {
   const { user } = useAuth();
   const { rankPosts } = useFeedAlgorithm();
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const fetchPosts = async (tab: string, page: number) => {
     setLoading(true);
@@ -33,8 +35,8 @@ const Feed = () => {
         .from('posts')
         .select(`
           *,
-          profiles:author_id (username, avatar_url),
-          squads:squad_id (name)
+          profiles(username, avatar_url),
+          squads(name)
         `)
         .order('created_at', { ascending: false })
         .range((page - 1) * 10, page * 10 - 1);
@@ -71,14 +73,14 @@ const Feed = () => {
           .from('posts')
           .select(`
             *,
-            profiles:author_id (username, avatar_url),
-            squads:squad_id (name)
+            profiles(username, avatar_url),
+            squads(name)
           `)
           .order('upvotes', { ascending: false })
           .range((page - 1) * 10, page * 10 - 1);
       }
 
-      const { data, error, count } = await query;
+      const { data, error } = await query;
 
       if (error) {
         console.error("Error fetching posts:", error);
@@ -88,8 +90,8 @@ const Feed = () => {
           variant: "destructive"
         });
       } else {
-        const newPosts = (data as PostWithAuthor[]) || [];
-        setPosts(prevPosts => [...prevPosts, ...newPosts]);
+        const newPosts = data as PostWithAuthor[] || [];
+        setPosts(prevPosts => page === 1 ? newPosts : [...prevPosts, ...newPosts]);
         setHasMore(newPosts.length === 10);
       }
     } catch (error) {
@@ -157,6 +159,10 @@ const Feed = () => {
     fetchPosts(tab, 1);
   };
 
+  const navigateToTab = (route: string) => {
+    navigate(route);
+  };
+
   return (
     <div className="w-full max-w-3xl mx-auto">
       <div className="mb-6">
@@ -165,10 +171,10 @@ const Feed = () => {
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="mb-4 w-full justify-start">
-          <TabsTrigger value="for-you">For You</TabsTrigger>
-          <TabsTrigger value="following">Following</TabsTrigger>
-          <TabsTrigger value="trending">Trending</TabsTrigger>
-          <TabsTrigger value="latest">Latest</TabsTrigger>
+          <TabsTrigger value="for-you" onClick={() => navigateToTab("/")}>For You</TabsTrigger>
+          <TabsTrigger value="following" onClick={() => navigateToTab("/following")}>Following</TabsTrigger>
+          <TabsTrigger value="trending" onClick={() => navigateToTab("/trending")}>Trending</TabsTrigger>
+          <TabsTrigger value="latest" onClick={() => navigateToTab("/latest")}>Latest</TabsTrigger>
         </TabsList>
         
         <TabsContent value="for-you">

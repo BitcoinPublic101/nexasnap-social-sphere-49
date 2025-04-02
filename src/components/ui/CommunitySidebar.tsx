@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -122,7 +121,7 @@ export function CommunitySidebar() {
         </Button>
         
         <Button 
-          variant="ghost" 
+          variant={isActive('/popular') ? "secondary" : "ghost"}
           className="w-full justify-start" 
           size="sm"
           asChild
@@ -134,7 +133,7 @@ export function CommunitySidebar() {
         </Button>
         
         <Button 
-          variant="ghost" 
+          variant={isActive('/explore') ? "secondary" : "ghost"}
           className="w-full justify-start" 
           size="sm"
           asChild

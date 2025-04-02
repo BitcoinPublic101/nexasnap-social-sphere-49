@@ -38,8 +38,8 @@ export function useFeedAlgorithm({
           .from('posts')
           .select(`
             *,
-            profiles:author_id(username, avatar_url),
-            squads:squad_id(name)
+            profiles(username, avatar_url),
+            squads(name)
           `)
           .eq('is_hidden', false);
         

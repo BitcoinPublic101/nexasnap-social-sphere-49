@@ -24,6 +24,8 @@ import Premium from "./pages/Premium";
 import BotManagement from "./pages/BotManagement";
 import PaymentSuccess from "./pages/PaymentSuccess";
 import PaymentCanceled from "./pages/PaymentCanceled";
+import Popular from "./pages/Popular";
+import Explore from "./pages/Explore";
 
 const queryClient = new QueryClient();
 
@@ -48,6 +50,13 @@ const App = () => (
                 <Route path="/r/:squadName" element={<SquadPage />} />
                 <Route path="/post/:postId" element={<PostPage />} />
                 <Route path="/premium" element={<Premium />} />
+                
+                {/* New routes */}
+                <Route path="/popular" element={<Popular />} />
+                <Route path="/explore" element={<Explore />} />
+                <Route path="/trending" element={<Popular />} />
+                <Route path="/following" element={<Index />} />
+                <Route path="/latest" element={<Index />} />
                 
                 {/* Protected routes */}
                 <Route 
