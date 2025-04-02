@@ -1,24 +1,40 @@
-import React from 'react';
-import { useParams } from 'react-router-dom';
-import { NavBar } from '@/components/ui/NavBar';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CreatePostCard } from '@/components/CreatePostCard';
-import PostCard from '@/components/PostCard';
-import { CommunitySidebar } from '@/components/ui/CommunitySidebar';
-import { TrendingSideBar } from '@/components/TrendingSideBar';
-import { useToast } from '@/hooks/use-toast';
+import React, { useState, useEffect } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
-import { Loader2, Users, Info, Bell, BellOff, Settings } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import PostCard from '@/components/PostCard';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import SEOMetaTags from '@/components/SEOMetaTags';
+
+interface Post {
+  id: number;
+  title: string;
+  content: string;
+  author_id: string;
+  created_at: string;
+  image: string | null;
+  upvotes: number | null;
+  downvotes: number | null;
+  commentcount: number | null;
+  profiles: {
+    username: string;
+    avatar_url: string | null;
+  };
+}
 
 const SquadPage = () => {
-  const { squadName } = useParams<{ squadName: string }>();
-  const [squad, setSquad] = useState<any | null>(null);
+  const { squadName } = useParams();
+  const [squad, setSquad] = useState<any>(null);
   const [posts, setPosts] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isMember, setIsMember] = useState(false);
-  const [isFavorite, setIsFavorite] = useState(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isMember, setIsMember] = useState<boolean>(false);
+  const [isFavorite, setIsFavorite] = useState<boolean>(false);
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -26,58 +42,65 @@ const SquadPage = () => {
     const fetchSquadData = async () => {
       setIsLoading(true);
       try {
-        // Fetch squad by name
         const { data: squadData, error: squadError } = await supabase
           .from('squads')
           .select('*')
           .eq('name', squadName)
           .single();
 
-        if (squadError) throw squadError;
-        if (!squadData) throw new Error('Squad not found');
+        if (squadError) {
+          throw squadError;
+        }
 
-        setSquad(squadData);
+        if (squadData) {
+          setSquad(squadData);
 
-        // Fetch squad's posts
-        const { data: postsData, error: postsError } = await supabase
-          .from('posts')
-          .select(`
-            *,
-            profiles:author_id(username, avatar_url)
-          `)
-          .eq('squad_id', squadData.id)
-          .eq('is_hidden', false)
-          .order('created_at', { ascending: false });
-
-        if (postsError) throw postsError;
-        setPosts(postsData || []);
-
-        // Check if user is a member of this squad
-        if (user) {
-          const { data: memberData } = await supabase
-            .from('squad_members')
-            .select('*')
-            .eq('user_id', user.id)
+          // Fetch posts for the squad
+          const { data: postsData, error: postsError } = await supabase
+            .from('posts')
+            .select('*, profiles(username, avatar_url)')
             .eq('squad_id', squadData.id)
-            .maybeSingle();
-          
-          setIsMember(!!memberData);
-          
-          // Check if squad is favorited
-          const { data: favoriteData } = await supabase
-            .from('squad_favorites')
-            .select('*')
-            .eq('user_id', user.id)
-            .eq('squad_id', squadData.id)
-            .maybeSingle();
-          
-          setIsFavorite(!!favoriteData);
+            .order('created_at', { ascending: false });
+
+          if (postsError) {
+            throw postsError;
+          }
+
+          if (postsData) {
+            setPosts(postsData);
+          }
+
+          // Check if the user is a member
+          if (user) {
+            const { data: memberData, error: memberError } = await supabase
+              .from('squad_members')
+              .select('*')
+              .eq('squad_id', squadData.id)
+              .eq('user_id', user.id)
+              .single();
+
+            if (!memberError && memberData) {
+              setIsMember(true);
+            }
+
+            // Check if the squad is a favorite
+            const { data: favoriteData, error: favoriteError } = await supabase
+              .from('squad_favorites')
+              .select('*')
+              .eq('squad_id', squadData.id)
+              .eq('user_id', user.id)
+              .single();
+
+            if (!favoriteError && favoriteData) {
+              setIsFavorite(true);
+            }
+          }
         }
       } catch (error: any) {
-        console.error('Error fetching squad:', error);
+        console.error('Error fetching squad data:', error);
         toast({
           title: 'Error',
-          description: error.message || 'Failed to load squad',
+          description: 'Failed to load squad information.',
           variant: 'destructive',
         });
       } finally {
@@ -85,308 +108,290 @@ const SquadPage = () => {
       }
     };
 
-    if (squadName) {
-      fetchSquadData();
-    }
+    fetchSquadData();
   }, [squadName, user, toast]);
 
   const handleJoinSquad = async () => {
-    if (!user) {
+    if (!user || !squad) {
       toast({
-        title: 'Authentication required',
-        description: 'Please sign in to join squads',
-        variant: 'default',
+        title: 'Error',
+        description: 'You must be logged in to join a squad.',
+        variant: 'destructive',
       });
       return;
     }
 
     try {
-      if (isMember) {
-        // Leave squad
-        await supabase
-          .from('squad_members')
-          .delete()
-          .eq('user_id', user.id)
-          .eq('squad_id', squad.id);
-        
-        setIsMember(false);
-        toast({
-          title: 'Left squad',
-          description: `You have left r/${squad.name}`,
+      setIsLoading(true);
+      const { error } = await supabase
+        .from('squad_members')
+        .insert({
+          squad_id: squad.id,
+          user_id: user.id,
         });
-      } else {
-        // Join squad
-        await supabase
-          .from('squad_members')
-          .insert({
-            user_id: user.id,
-            squad_id: squad.id
-          });
-        
-        setIsMember(true);
-        toast({
-          title: 'Success',
-          description: `You have joined r/${squad.name}`,
-        });
+
+      if (error) {
+        throw error;
       }
+
+      setIsMember(true);
+      toast({
+        title: 'Success',
+        description: 'You have successfully joined the squad!',
+      });
     } catch (error: any) {
+      console.error('Error joining squad:', error);
       toast({
         title: 'Error',
-        description: error.message || 'Failed to update squad membership',
+        description: 'Failed to join the squad. Please try again.',
         variant: 'destructive',
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleFavoriteSquad = async () => {
-    if (!user) {
+  const handleLeaveSquad = async () => {
+    if (!user || !squad) {
       toast({
-        title: 'Authentication required',
-        description: 'Please sign in to favorite squads',
-        variant: 'default',
+        title: 'Error',
+        description: 'You must be logged in to leave a squad.',
+        variant: 'destructive',
       });
       return;
     }
 
     try {
+      setIsLoading(true);
+      const { error } = await supabase
+        .from('squad_members')
+        .delete()
+        .eq('squad_id', squad.id)
+        .eq('user_id', user.id);
+
+      if (error) {
+        throw error;
+      }
+
+      setIsMember(false);
+      toast({
+        title: 'Success',
+        description: 'You have successfully left the squad.',
+      });
+    } catch (error: any) {
+      console.error('Error leaving squad:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to leave the squad. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const toggleFavoriteSquad = async () => {
+    if (!user || !squad) {
+      toast({
+        title: 'Error',
+        description: 'You must be logged in to favorite a squad.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setIsLoading(true);
       if (isFavorite) {
-        // Remove favorite
-        await supabase
+        // Remove from favorites
+        const { error } = await supabase
           .from('squad_favorites')
           .delete()
-          .eq('user_id', user.id)
-          .eq('squad_id', squad.id);
-        
+          .eq('squad_id', squad.id)
+          .eq('user_id', user.id);
+
+        if (error) {
+          throw error;
+        }
+
         setIsFavorite(false);
         toast({
-          title: 'Removed from favorites',
-          description: `r/${squad.name} has been removed from your favorites`,
+          title: 'Success',
+          description: 'Squad removed from favorites.',
         });
       } else {
-        // Add favorite
-        await supabase
+        // Add to favorites
+        const { error } = await supabase
           .from('squad_favorites')
           .insert({
+            squad_id: squad.id,
             user_id: user.id,
-            squad_id: squad.id
           });
-        
+
+        if (error) {
+          throw error;
+        }
+
         setIsFavorite(true);
         toast({
-          title: 'Added to favorites',
-          description: `r/${squad.name} has been added to your favorites`,
+          title: 'Success',
+          description: 'Squad added to favorites!',
         });
       }
     } catch (error: any) {
+      console.error('Error toggling favorite squad:', error);
       toast({
         title: 'Error',
-        description: error.message || 'Failed to update favorites',
+        description: 'Failed to update favorite status. Please try again.',
         variant: 'destructive',
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen">
-        <NavBar />
-        <div className="container py-8 flex items-center justify-center min-h-[50vh]">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      </div>
-    );
-  }
-
-  if (!squad) {
-    return (
-      <div className="min-h-screen">
-        <NavBar />
-        <div className="container py-8">
-          <Card>
-            <CardContent className="py-10">
-              <div className="text-center">
-                <h2 className="text-2xl font-bold">Squad not found</h2>
-                <p className="text-muted-foreground mt-2">
-                  The squad you're looking for doesn't exist or has been removed.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen">
-      <NavBar />
-      
-      {/* Squad header */}
-      <div className="bg-card border-b">
-        {squad.banner_image ? (
-          <div 
-            className="h-32 md:h-48 bg-center bg-cover"
-            style={{ backgroundImage: `url(${squad.banner_image})` }}
-          />
-        ) : (
-          <div className="h-32 md:h-48 bg-gradient-to-r from-primary/20 to-primary/5" />
+    <div className="container mx-auto p-4">
+      <SEOMetaTags
+        title={`${squad?.name || 'Squad'} - NexaSnap`}
+        description={squad?.description || `Explore the ${squadName} squad on NexaSnap.`}
+        keywords={[squadName, 'squad', 'community', 'NexaSnap']}
+      />
+
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-3xl font-bold">{squad?.name || squadName}</h1>
+          <p className="text-muted-foreground">
+            {squad?.description || 'A community squad on NexaSnap.'}
+          </p>
+        </div>
+        {user && squad && (
+          <div className="space-x-2">
+            <Button
+              variant={isFavorite ? 'destructive' : 'outline'}
+              onClick={toggleFavoriteSquad}
+              disabled={isLoading}
+            >
+              {isFavorite ? 'Unfavorite' : 'Favorite'}
+            </Button>
+            {isMember ? (
+              <Button onClick={handleLeaveSquad} disabled={isLoading}>
+                Leave Squad
+              </Button>
+            ) : (
+              <Button onClick={handleJoinSquad} disabled={isLoading}>
+                Join Squad
+              </Button>
+            )}
+          </div>
         )}
-        
-        <div className="container py-4">
-          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center my-8">
+          <p>Loading squad information...</p>
+        </div>
+      ) : squad ? (
+        <div>
+          <div className="flex items-center space-x-4 mb-4">
+            <Avatar className="h-12 w-12">
+              <AvatarImage src={squad.banner_image || undefined} alt={squad.name} />
+              <AvatarFallback>{squad.name.substring(0, 2).toUpperCase()}</AvatarFallback>
+            </Avatar>
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
-                r/{squad.name}
-                {squad.is_verified && (
-                  <span className="bg-primary/10 text-primary text-xs px-2 py-0.5 rounded-full">
-                    Verified
-                  </span>
-                )}
-              </h1>
-              <p className="text-muted-foreground text-sm md:text-base mt-1">
-                {squad.member_count.toLocaleString()} members • {squad.post_count.toLocaleString()} posts
+              <h2 className="text-xl font-semibold">{squad.name}</h2>
+              <p className="text-muted-foreground">
+                Created on {new Date(squad.created_at).toLocaleDateString()}
               </p>
-              {squad.description && (
-                <p className="mt-2 text-sm md:text-base max-w-3xl">{squad.description}</p>
-              )}
-            </div>
-            
-            <div className="flex flex-wrap gap-2 self-stretch md:self-auto">
-              <Button
-                variant={isMember ? "outline" : "default"}
-                onClick={handleJoinSquad}
-                className="flex items-center gap-2"
-              >
-                <Users className="w-4 h-4" />
-                <span>{isMember ? "Leave" : "Join"}</span>
-              </Button>
-              
-              <Button
-                variant="outline"
-                onClick={handleFavoriteSquad}
-                className="flex items-center gap-2"
-              >
-                {isFavorite ? (
-                  <>
-                    <BellOff className="w-4 h-4" />
-                    <span>Unfavorite</span>
-                  </>
-                ) : (
-                  <>
-                    <Bell className="w-4 h-4" />
-                    <span>Favorite</span>
-                  </>
-                )}
-              </Button>
-              
-              {user && squad.moderator_id === user.id && (
-                <Button variant="outline" className="flex items-center gap-2">
-                  <Settings className="w-4 h-4" />
-                  <span>Manage</span>
-                </Button>
-              )}
             </div>
           </div>
-        </div>
-      </div>
-      
-      {/* Main content */}
-      <div className="container py-6">
-        <div className="max-w-2xl mx-auto">
-          {isMember && <CreatePostCard squadId={squad.id} />}
           
           <Tabs defaultValue="posts" className="mt-6">
-            <TabsList className="w-full border-b rounded-none justify-start">
-              <TabsTrigger value="posts" className="flex-1 md:flex-none">Posts</TabsTrigger>
-              <TabsTrigger value="about" className="flex-1 md:flex-none">About</TabsTrigger>
-              <TabsTrigger value="rules" className="flex-1 md:flex-none">Rules</TabsTrigger>
+            <TabsList className="mb-4">
+              <TabsTrigger value="posts">Posts</TabsTrigger>
+              <TabsTrigger value="about">About</TabsTrigger>
+              <TabsTrigger value="members">Members</TabsTrigger>
+              {squad.moderator_id === user?.id && (
+                <TabsTrigger value="manage">Manage Squad</TabsTrigger>
+              )}
             </TabsList>
             
-            <TabsContent value="posts" className="space-y-4 mt-4">
-              {posts.length === 0 ? (
-                <Card>
-                  <CardContent className="py-10">
-                    <div className="text-center">
-                      <h3 className="text-lg font-medium">No posts yet</h3>
-                      <p className="text-muted-foreground mt-2">
-                        Be the first to post in this squad!
+            <TabsContent value="posts">
+              
+              <div className="grid grid-cols-1 gap-6">
+                {posts.length > 0 ? (
+                  posts.map((post) => (
+                    <PostCard 
+                      key={post.id} 
+                      post={{
+                        ...post,
+                        created_at: post.created_at
+                      }} 
+                    />
+                  ))
+                ) : (
+                  <Card>
+                    <CardContent className="p-6">
+                      <p className="text-center text-muted-foreground">
+                        No posts in this squad yet. Be the first to post!
                       </p>
-                      
-                      {!isMember && (
-                        <Button onClick={handleJoinSquad} className="mt-4">
-                          Join and Create Post
-                        </Button>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ) : (
-                posts.map((post) => (
-                  <PostCard key={post.id} post={{
-                    id: post.id,
-                    title: post.title,
-                    content: post.content,
-                    timestamp: new Date(post.created_at).toLocaleString(),
-                    votes: post.upvotes - post.downvotes,
-                    commentCount: post.commentcount,
-                    squad: squad.name,
-                    author: post.profiles?.username || "Unknown",
-                    image: post.image,
-                  }} />
-                ))
-              )}
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
             </TabsContent>
             
-            <TabsContent value="about" className="mt-4">
+            <TabsContent value="about">
               <Card>
-                <CardContent className="py-6">
-                  <div className="flex items-start gap-3">
-                    <Info className="w-5 h-5 mt-0.5 text-muted-foreground" />
-                    <div>
-                      <h3 className="text-lg font-medium">About r/{squad.name}</h3>
-                      <p className="text-muted-foreground mt-2">
-                        {squad.description || "No description available."}
-                      </p>
-                      
-                      <div className="mt-4 space-y-3">
-                        <div>
-                          <span className="text-sm font-medium">Created:</span>
-                          <span className="text-sm ml-2 text-muted-foreground">
-                            {new Date(squad.created_at).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-sm font-medium">Members:</span>
-                          <span className="text-sm ml-2 text-muted-foreground">
-                            {squad.member_count.toLocaleString()}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-sm font-medium">Posts:</span>
-                          <span className="text-sm ml-2 text-muted-foreground">
-                            {squad.post_count.toLocaleString()}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+                <CardContent className="p-6 prose max-w-none">
+                  <h3 className="text-xl font-bold mb-4">About {squad.name}</h3>
+                  <p>{squad.description || "No description available."}</p>
+                  
+                  <div className="mt-6">
+                    <h4 className="text-lg font-medium mb-2">Squad Stats</h4>
+                    <ul className="list-disc pl-5">
+                      <li>Members: {squad.member_count || 0}</li>
+                      <li>Posts: {squad.post_count || 0}</li>
+                      <li>Created: {new Date(squad.created_at).toLocaleDateString()}</li>
+                      {squad.is_verified && <li>Verified Squad</li>}
+                    </ul>
                   </div>
                 </CardContent>
               </Card>
             </TabsContent>
             
-            <TabsContent value="rules" className="mt-4">
+            <TabsContent value="members">
               <Card>
-                <CardContent className="py-6">
-                  <h3 className="text-lg font-medium">Community Rules</h3>
-                  <p className="text-muted-foreground mt-2">
-                    Rules for this community have not been set up yet.
+                <CardContent className="p-6">
+                  <h3 className="text-xl font-bold mb-4">Squad Members</h3>
+                  <p className="text-muted-foreground">
+                    Coming soon: List of squad members and their roles.
                   </p>
                 </CardContent>
               </Card>
             </TabsContent>
+            
+            {squad.moderator_id === user?.id && (
+              <TabsContent value="manage">
+                <Card>
+                  <CardContent className="p-6">
+                    <h3 className="text-xl font-bold mb-4">Manage Squad</h3>
+                    <p className="text-muted-foreground">
+                      Coming soon: Options to manage squad settings and members.
+                    </p>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
           </Tabs>
         </div>
-      </div>
+      ) : (
+        <Card>
+          <CardContent className="p-6 text-center">
+            <p>Squad not found or has been removed.</p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

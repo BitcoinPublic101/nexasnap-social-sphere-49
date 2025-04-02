@@ -161,6 +161,60 @@ export type Database = {
         }
         Relationships: []
       }
+      messages: {
+        Row: {
+          content: string
+          created_at: string
+          id: number
+          read: boolean
+          receiver_id: string
+          sender_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: number
+          read?: boolean
+          receiver_id: string
+          sender_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: number
+          read?: boolean
+          receiver_id?: string
+          sender_id?: string
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          content: string
+          created_at: string
+          id: number
+          seen: boolean
+          type: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: number
+          seen?: boolean
+          type: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: number
+          seen?: boolean
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       post_boosts: {
         Row: {
           created_at: string
@@ -418,6 +472,45 @@ export type Database = {
           name?: string
           post_count?: number | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      system_bots: {
+        Row: {
+          created_at: string
+          created_by: string
+          description: string | null
+          id: number
+          is_active: boolean
+          last_run: string | null
+          name: string
+          prompt_template: string | null
+          schedule: string
+          type: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          description?: string | null
+          id?: number
+          is_active?: boolean
+          last_run?: string | null
+          name: string
+          prompt_template?: string | null
+          schedule?: string
+          type: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          id?: number
+          is_active?: boolean
+          last_run?: string | null
+          name?: string
+          prompt_template?: string | null
+          schedule?: string
+          type?: string
         }
         Relationships: []
       }

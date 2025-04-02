@@ -43,4 +43,3 @@ verify_jwt = true
 
 [functions.content-moderation]
 verify_jwt = true
-

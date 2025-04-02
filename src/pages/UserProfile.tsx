@@ -1,425 +1,511 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { NavBar } from '@/components/ui/NavBar';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Separator } from '@/components/ui/separator';
 import PostCard from '@/components/PostCard';
-import { TrendingSideBar } from '@/components/TrendingSideBar';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Edit, UserPlus, UserCheck, Settings, ExternalLink, Calendar, MapPin, Sparkles } from 'lucide-react';
 
-const UserProfile = () => {
-  const { username } = useParams<{ username: string }>();
-  const navigate = useNavigate();
-  const { user: currentUser } = useAuth();
+const profileFormSchema = z.object({
+  username: z.string().min(3, 'Username must be at least 3 characters').max(50),
+  full_name: z.string().optional(),
+  bio: z.string().max(500, 'Bio cannot exceed 500 characters').optional(),
+  website: z.string().url('Invalid URL').or(z.string().length(0)).optional(),
+  avatar_url: z.string().optional(),
+});
+
+type ProfileFormValues = z.infer<typeof profileFormSchema>;
+
+const securityFormSchema = z.object({
+  currentPassword: z.string().min(1, 'Please enter your current password'),
+  newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+  confirmPassword: z.string(),
+}).refine((data) => data.newPassword === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ["confirmPassword"],
+});
+
+type SecurityFormValues = z.infer<typeof securityFormSchema>;
+
+const Profile = () => {
+  const { user } = useAuth();
   const { toast } = useToast();
-  
-  const [user, setUser] = useState<any>(null);
-  const [posts, setPosts] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingFollow, setIsLoadingFollow] = useState(false);
-  const [isFollowing, setIsFollowing] = useState(false);
-  const [followerCount, setFollowerCount] = useState(0);
-  const [followingCount, setFollowingCount] = useState(0);
-  const [isPremium, setIsPremium] = useState(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [profileData, setProfileData] = useState<any>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [userPosts, setUserPosts] = useState<any[]>([]);
+
+  const profileForm = useForm<ProfileFormValues>({
+    resolver: zodResolver(profileFormSchema),
+    defaultValues: {
+      username: '',
+      full_name: '',
+      bio: '',
+      website: '',
+      avatar_url: '',
+    },
+  });
+
+  const securityForm = useForm<SecurityFormValues>({
+    resolver: zodResolver(securityFormSchema),
+    defaultValues: {
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: '',
+    },
+  });
 
   useEffect(() => {
     const fetchProfile = async () => {
-      setIsLoading(true);
-      
+      if (!user) return;
+
       try {
-        // Fetch user profile
-        const { data: profileData, error: profileError } = await supabase
+        setIsLoading(true);
+        const { data, error } = await supabase
           .from('profiles')
           .select('*')
-          .eq('username', username)
+          .eq('id', user.id)
           .single();
-        
-        if (profileError) throw profileError;
-        if (!profileData) throw new Error('User not found');
-        
-        setUser(profileData);
-        setIsPremium(profileData.is_premium || false);
-        
-        // Update follow-related data after user is fetched
-        await fetchFollowData(profileData.id);
-      } catch (error: any) {
+
+        if (error) {
+          throw error;
+        }
+
+        if (data) {
+          setProfileData(data);
+          profileForm.reset({
+            username: data.username || '',
+            full_name: data.full_name || '',
+            bio: data.bio || '',
+            website: data.website || '',
+            avatar_url: data.avatar_url || '',
+          });
+          setAvatarUrl(data.avatar_url);
+        }
+      } catch (error) {
         console.error('Error fetching profile:', error);
         toast({
-          title: 'Error',
-          description: error.message || 'Failed to load profile',
+          title: 'Failed to load profile',
+          description: 'Something went wrong while loading your profile.',
           variant: 'destructive',
         });
-        navigate('/');
       } finally {
         setIsLoading(false);
       }
     };
-    
+
+    const fetchUserPosts = async () => {
+      if (!user) return;
+
+      try {
+        setIsLoading(true);
+        const { data, error } = await supabase
+          .from('posts')
+          .select('*')
+          .eq('author_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          throw error;
+        }
+
+        if (data) {
+          setUserPosts(data);
+        }
+      } catch (error) {
+        console.error('Error fetching user posts:', error);
+        toast({
+          title: 'Failed to load posts',
+          description: 'Something went wrong while loading your posts.',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
     fetchProfile();
-  }, [username, navigate, toast]);
+    fetchUserPosts();
+  }, [user, profileForm, toast]);
 
-  const fetchFollowData = async (userId: string) => {
-    try {
-      if (!userId) return;
-      
-      // Temporarily use placeholder values for follower and following counts
-      // Fetch follower count
-      // const { count: followerCountData, error: followerError } = await supabase.rpc(
-      //   'count_followers',
-      //   { user_id: userId }
-      // );
-      
-      // if (!followerError) {
-      //   setFollowerCount(followerCountData || 0);
-      // }
-      
-      // // Fetch following count
-      // const { count: followingCountData, error: followingError } = await supabase.rpc(
-      //   'count_following',
-      //   { user_id: userId }
-      // );
-      
-      // if (!followingError) {
-      //   setFollowingCount(followingCountData || 0);
-      // }
-      
-      // // Check if current user is following this profile
-      // if (currentUser) {
-      //   const { data: isFollowingData, error: followCheckError } = await supabase.rpc(
-      //     'check_is_following',
-      //     { 
-      //       follower_user_id: currentUser.id, 
-      //       followed_user_id: userId 
-      //     }
-      //   );
-        
-      //   if (!followCheckError) {
-      //     setIsFollowing(isFollowingData || false);
-      //   }
-      // }
-
-      // Using placeholder values
-      setFollowerCount(123);
-      setFollowingCount(45);
-      setIsFollowing(false);
-      
-      // Fetch posts by this user
-      const { data: userPosts, error: postsError } = await supabase
-        .from('posts')
-        .select(`
-          *,
-          profiles:author_id(username, avatar_url),
-          squads:squad_id(name)
-        `)
-        .eq('author_id', userId)
-        .eq('is_hidden', false)
-        .order('created_at', { ascending: false })
-        .limit(5);
-      
-      if (postsError) throw postsError;
-      
-      setPosts(userPosts || []);
-    } catch (error) {
-      console.error('Error fetching follow data:', error);
-    }
-  };
-
-  const handleFollowToggle = async () => {
-    if (!currentUser) {
-      toast({
-        title: 'Authentication required',
-        description: 'Please sign in to follow users',
-      });
-      navigate('/login');
-      return;
-    }
-    
+  const onProfileSubmit = async (data: ProfileFormValues) => {
     if (!user) return;
-    
-    setIsLoadingFollow(true);
-    try {
-      // Comment out RPC calls since they depend on functions that may not exist yet
-      // if (isFollowing) {
-      //   await supabase.rpc('unfollow_user', {
-      //     follower_user_id: currentUser.id,
-      //     followed_user_id: user.id
-      //   });
-      //   setIsFollowing(false);
-      //   setFollowerCount(prev => Math.max(0, prev - 1));
-      //   toast({
-      //     title: 'Unfollowed',
-      //     description: `You no longer follow ${user.username}`,
-      //   });
-      // } else {
-      //   await supabase.rpc('follow_user', {
-      //     follower_user_id: currentUser.id,
-      //     followed_user_id: user.id
-      //   });
-      //   setIsFollowing(true);
-      //   setFollowerCount(prev => prev + 1);
-      //   toast({
-      //     title: 'Following',
-      //     description: `You are now following ${user.username}`,
-      //   });
-      // }
 
-      // Show a toast message about this feature being under development
+    try {
+      setIsLoading(true);
+      
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          username: data.username,
+          full_name: data.full_name,
+          bio: data.bio,
+          website: data.website,
+          avatar_url: data.avatar_url,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
+
+      if (error) {
+        throw error;
+      }
+
       toast({
-        title: 'Feature in development',
-        description: 'The follow functionality is currently being implemented.',
-        variant: 'default',
+        title: 'Profile updated',
+        description: 'Your profile has been successfully updated.',
       });
     } catch (error: any) {
-      console.error('Error toggling follow:', error);
+      console.error('Error updating profile:', error);
       toast({
-        title: 'Error',
-        description: error.message || 'Failed to update follow status',
+        title: 'Update failed',
+        description: error.message || 'Something went wrong. Please try again.',
         variant: 'destructive',
       });
     } finally {
-      setIsLoadingFollow(false);
+      setIsLoading(false);
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen">
-        <NavBar />
-        <div className="container py-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="md:col-span-2">
-              <Card>
-                <CardHeader className="pb-2">
-                  <div className="flex items-center gap-4">
-                    <Skeleton className="h-16 w-16 rounded-full" />
-                    <div className="space-y-2">
-                      <Skeleton className="h-6 w-32" />
-                      <Skeleton className="h-4 w-24" />
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <Skeleton className="h-4 w-full" />
-                    <Skeleton className="h-4 w-3/4" />
-                  </div>
-                </CardContent>
-              </Card>
-              
-              <div className="mt-6">
-                <Skeleton className="h-10 w-full mb-4" />
-                {[1, 2, 3].map((i) => (
-                  <Skeleton key={i} className="h-[200px] w-full mb-4" />
-                ))}
-              </div>
-            </div>
-            
-            <div className="hidden md:block">
-              <TrendingSideBar />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const onSecuritySubmit = async (data: SecurityFormValues) => {
+    if (!user) return;
+
+    try {
+      setIsLoading(true);
+      
+      // First, verify the current password by trying to sign in
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: user.email!,
+        password: data.currentPassword,
+      });
+
+      if (signInError) {
+        throw new Error('Current password is incorrect');
+      }
+
+      // If current password is correct, update to new password
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: data.newPassword,
+      });
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      securityForm.reset({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      });
+
+      toast({
+        title: 'Password updated',
+        description: 'Your password has been successfully updated.',
+      });
+    } catch (error: any) {
+      console.error('Error updating password:', error);
+      toast({
+        title: 'Update failed',
+        description: error.message || 'Something went wrong. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!event.target.files || event.target.files.length === 0 || !user) {
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const file = event.target.files[0];
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.id}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      // Upload the file to Supabase storage
+      const { error: uploadError, data } = await supabase.storage
+        .from('profile-images')
+        .upload(filePath, file);
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('profile-images')
+        .getPublicUrl(filePath);
+
+      // Update the avatar URL in the form
+      profileForm.setValue('avatar_url', publicUrl);
+      setAvatarUrl(publicUrl);
+
+      // Update profile with new avatar URL
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: publicUrl })
+        .eq('id', user.id);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      toast({
+        title: 'Avatar updated',
+        description: 'Your profile picture has been successfully updated.',
+      });
+    } catch (error: any) {
+      console.error('Error uploading avatar:', error);
+      toast({
+        title: 'Upload failed',
+        description: error.message || 'Something went wrong. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   if (!user) {
-    return (
-      <div className="min-h-screen">
-        <NavBar />
-        <div className="container py-8 text-center">
-          <h1 className="text-2xl font-bold mb-4">User not found</h1>
-          <p className="text-muted-foreground mb-6">
-            The user you're looking for doesn't exist or has been removed.
-          </p>
-          <Button onClick={() => navigate('/')}>Return to Home</Button>
-        </div>
-      </div>
-    );
+    return <div>Please log in to view your profile.</div>;
   }
 
   return (
-    <div className="min-h-screen">
-      <NavBar />
-      <div className="container py-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="md:col-span-2">
-            <Card>
-              <CardHeader className="pb-2">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <Avatar className="h-16 w-16 border-2 border-primary/10">
-                      <AvatarImage src={user.avatar_url} />
-                      <AvatarFallback className="text-lg">
-                        {user.username.substring(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h1 className="text-2xl font-bold">{user.username}</h1>
-                        {isPremium && (
-                          <Badge className="bg-gradient-to-r from-amber-500 to-yellow-300 text-white">
-                            <Sparkles className="h-3 w-3 mr-1" />
-                            Premium
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-muted-foreground">
-                        Joined {new Date(user.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
+    <div className="container mx-auto py-10">
+      <h1 className="mb-8 text-3xl font-bold">Your Account</h1>
+      
+      <Tabs defaultValue="profile">
+        <TabsList className="mb-6">
+          <TabsTrigger value="profile">Profile</TabsTrigger>
+          <TabsTrigger value="security">Security</TabsTrigger>
+          <TabsTrigger value="posts">Your Posts</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="profile">
+          <Card>
+            <CardHeader>
+              <CardTitle>Profile Information</CardTitle>
+              <CardDescription>
+                Update your profile details and public information
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="flex flex-col items-center space-y-4 sm:flex-row sm:space-x-4 sm:space-y-0">
+                <Avatar className="h-24 w-24">
+                  <AvatarImage src={avatarUrl || undefined} />
+                  <AvatarFallback>
+                    {profileData?.username?.substring(0, 2)?.toUpperCase() || user.email?.substring(0, 2)?.toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="space-y-2">
+                  <h3 className="text-lg font-medium">Profile Picture</h3>
+                  <div className="flex items-center space-x-2">
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAvatarUpload}
+                      disabled={isLoading}
+                      className="max-w-sm"
+                    />
                   </div>
-                  
-                  <div className="flex gap-2">
-                    {currentUser?.id === user.id ? (
-                      <Button variant="outline" onClick={() => navigate('/settings')}>
-                        <Settings className="h-4 w-4 mr-2" />
-                        Edit Profile
-                      </Button>
-                    ) : (
-                      <Button 
-                        variant={isFollowing ? "outline" : "default"}
-                        onClick={handleFollowToggle}
-                        disabled={isLoadingFollow}
-                      >
-                        {isFollowing ? (
-                          <>
-                            <UserCheck className="h-4 w-4 mr-2" />
-                            Following
-                          </>
-                        ) : (
-                          <>
-                            <UserPlus className="h-4 w-4 mr-2" />
-                            Follow
-                          </>
-                        )}
-                      </Button>
-                    )}
-                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    JPG, PNG or GIF. 1MB max.
+                  </p>
                 </div>
-              </CardHeader>
+              </div>
               
-              <CardContent>
-                <div className="flex flex-wrap gap-x-6 gap-y-2 mb-4">
-                  <div className="flex items-center gap-1">
-                    <span className="font-semibold">{followerCount}</span>
-                    <span className="text-muted-foreground">Followers</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="font-semibold">{followingCount}</span>
-                    <span className="text-muted-foreground">Following</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="font-semibold">{posts.length}</span>
-                    <span className="text-muted-foreground">Posts</span>
-                  </div>
+              <Separator />
+              
+              <Form {...profileForm}>
+                <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="space-y-4">
+                  <FormField
+                    control={profileForm.control}
+                    name="username"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Username</FormLabel>
+                        <FormControl>
+                          <Input placeholder="username" {...field} />
+                        </FormControl>
+                        <FormDescription>
+                          Your unique username for NexaSnap
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={profileForm.control}
+                    name="full_name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Full Name</FormLabel>
+                        <FormControl>
+                          <Input placeholder="John Doe" {...field} />
+                        </FormControl>
+                        <FormDescription>
+                          Your name as it will appear on your profile
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={profileForm.control}
+                    name="bio"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Bio</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder="Tell us a little bit about yourself"
+                            className="resize-none"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Brief description for your profile
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={profileForm.control}
+                    name="website"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Website</FormLabel>
+                        <FormControl>
+                          <Input placeholder="https://example.com" {...field} />
+                        </FormControl>
+                        <FormDescription>
+                          Your personal website or portfolio
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <Button type="submit" disabled={isLoading}>
+                    {isLoading ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </form>
+              </Form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="security">
+          <Card>
+            <CardHeader>
+              <CardTitle>Security Settings</CardTitle>
+              <CardDescription>
+                Manage your password and security preferences
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Form {...securityForm}>
+                <form onSubmit={securityForm.handleSubmit(onSecuritySubmit)} className="space-y-4">
+                  <FormField
+                    control={securityForm.control}
+                    name="currentPassword"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Current Password</FormLabel>
+                        <FormControl>
+                          <Input type="password" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={securityForm.control}
+                    name="newPassword"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>New Password</FormLabel>
+                        <FormControl>
+                          <Input type="password" {...field} />
+                        </FormControl>
+                        <FormDescription>
+                          Password must be at least 8 characters
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={securityForm.control}
+                    name="confirmPassword"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Confirm New Password</FormLabel>
+                        <FormControl>
+                          <Input type="password" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <Button type="submit" disabled={isLoading}>
+                    {isLoading ? 'Updating...' : 'Update Password'}
+                  </Button>
+                </form>
+              </Form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="posts">
+          <Card>
+            <CardHeader>
+              <CardTitle>Your Posts</CardTitle>
+              <CardDescription>
+                Manage and view your published posts
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <p>Loading posts...</p>
+              ) : (
+                <div className="grid grid-cols-1 gap-4">
+                  {userPosts.map((post) => (
+                    <PostCard
+                      key={post.id}
+                      post={{
+                        ...post,
+                        created_at: post.created_at
+                      }}
+                    />
+                  ))}
                 </div>
-                
-                {user.bio && (
-                  <p className="text-sm mb-4">{user.bio}</p>
-                )}
-                
-                <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
-                  {user.location && (
-                    <div className="flex items-center gap-1">
-                      <MapPin className="h-4 w-4" />
-                      <span>{user.location}</span>
-                    </div>
-                  )}
-                  {user.website && (
-                    <a 
-                      href={user.website.startsWith('http') ? user.website : `https://${user.website}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 hover:text-primary"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                      <span>Website</span>
-                    </a>
-                  )}
-                  <div className="flex items-center gap-1">
-                    <Calendar className="h-4 w-4" />
-                    <span>Joined {new Date(user.created_at).toLocaleDateString()}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            
-            <div className="mt-6">
-              <Tabs defaultValue="posts">
-                <TabsList>
-                  <TabsTrigger value="posts">Posts</TabsTrigger>
-                  <TabsTrigger value="comments">Comments</TabsTrigger>
-                  <TabsTrigger value="upvoted">Upvoted</TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="posts" className="mt-4">
-                  {posts.length === 0 ? (
-                    <Card>
-                      <CardContent className="py-8 text-center">
-                        <p className="text-muted-foreground mb-2">No posts yet</p>
-                        {currentUser?.id === user.id && (
-                          <Button onClick={() => navigate('/')}>Create your first post</Button>
-                        )}
-                      </CardContent>
-                    </Card>
-                  ) : (
-                    <div className="space-y-4">
-                      {posts.map((post) => (
-                        <PostCard 
-                          key={post.id} 
-                          post={{
-                            id: post.id,
-                            title: post.title,
-                            content: post.content,
-                            timestamp: new Date(post.created_at).toLocaleString(),
-                            votes: post.upvotes - post.downvotes,
-                            commentCount: post.commentcount,
-                            squad: post.squads?.name || "Unknown",
-                            author: post.profiles?.username || "Unknown",
-                            image: post.image,
-                          }} 
-                        />
-                      ))}
-                    </div>
-                  )}
-                </TabsContent>
-                
-                <TabsContent value="comments" className="mt-4">
-                  <Card>
-                    <CardContent className="py-8 text-center">
-                      <p className="text-muted-foreground">Comments will be displayed here</p>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-                
-                <TabsContent value="upvoted" className="mt-4">
-                  <Card>
-                    <CardContent className="py-8 text-center">
-                      <p className="text-muted-foreground">Upvoted content will be displayed here</p>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-              </Tabs>
-            </div>
-          </div>
-          
-          <div className="hidden md:block">
-            <TrendingSideBar />
-          </div>
-        </div>
-      </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
 
-export default UserProfile;
+export default Profile;

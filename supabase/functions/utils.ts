@@ -19,6 +19,15 @@ export interface Database {
           is_premium: boolean | null
           is_squad_creator: boolean | null
           stripe_customer_id: string | null
+          full_name: string | null
+          bio: string | null
+          website: string | null
+          is_active: boolean | null
+          is_moderator: boolean | null
+          is_admin: boolean | null
+          heaven_points: number | null
+          created_at: string
+          updated_at: string
         }
       }
       user_subscriptions: {
@@ -52,6 +61,18 @@ export interface Database {
           content: string
           author_id: string
           is_boosted: boolean | null
+          image: string | null
+          upvotes: number | null
+          downvotes: number | null
+          commentcount: number | null
+          created_at: string
+          updated_at: string
+          squad_id: number | null
+          is_announcement: boolean | null
+          is_hidden: boolean | null
+          is_flagged: boolean | null
+          report_count: number | null
+          view_count: number | null
         }
       }
       system_bots: {
