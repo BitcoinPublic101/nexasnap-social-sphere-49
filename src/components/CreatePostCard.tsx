@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
@@ -29,7 +30,7 @@ export const CreatePostCard = ({ squadId, onPostCreated }: { squadId?: number, o
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [selectedSquad, setSelectedSquad] = useState<number | null>(squadId || null);
+  const [selectedSquad, setSelectedSquad] = useState<string | null>(squadId ? squadId.toString() : null);
   const [squads, setSquads] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -83,7 +84,7 @@ export const CreatePostCard = ({ squadId, onPostCreated }: { squadId?: number, o
         
         // Set default squad if any available
         if (allSquads.length > 0 && !selectedSquad) {
-          setSelectedSquad(allSquads[0].id);
+          setSelectedSquad(allSquads[0].id.toString());
         }
       } catch (error: any) {
         console.error('Error fetching squads:', error);
@@ -152,7 +153,7 @@ export const CreatePostCard = ({ squadId, onPostCreated }: { squadId?: number, o
       setTitle('');
       setContent('');
       setImageUrl('');
-      setSelectedSquad('');
+      setSelectedSquad(null);
       
       // Refresh the feed (if callback provided)
       if (onPostCreated) {

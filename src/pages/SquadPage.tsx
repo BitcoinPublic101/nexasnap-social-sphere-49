@@ -1,12 +1,12 @@
-
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useParams } from 'react-router-dom';
 import { NavBar } from '@/components/ui/NavBar';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CreatePostCard } from '@/components/CreatePostCard';
-import { PostCard } from '@/components/PostCard';
+import PostCard from '@/components/PostCard';
+import { CommunitySidebar } from '@/components/ui/CommunitySidebar';
+import { TrendingSideBar } from '@/components/TrendingSideBar';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';

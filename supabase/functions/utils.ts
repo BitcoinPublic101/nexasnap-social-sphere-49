@@ -54,6 +54,40 @@ export interface Database {
           is_boosted: boolean | null
         }
       }
+      system_bots: {
+        Row: {
+          id: number
+          name: string
+          description: string | null
+          type: string
+          is_active: boolean
+          prompt_template: string | null
+          schedule: string
+          last_run: string | null
+          created_at: string
+          created_by: string
+        }
+      }
+      messages: {
+        Row: {
+          id: number
+          sender_id: string
+          receiver_id: string
+          content: string
+          read: boolean
+          created_at: string
+        }
+      }
+      notifications: {
+        Row: {
+          id: number
+          user_id: string
+          content: string
+          seen: boolean
+          type: string
+          created_at: string
+        }
+      }
     }
     Functions: {
       check_is_following: {

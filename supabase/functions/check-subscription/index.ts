@@ -76,7 +76,7 @@ serve(async (req) => {
       JSON.stringify({ error: error.message }),
       { 
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: error.status || a500,
+        status: error.status || 500,
       }
     );
   }
