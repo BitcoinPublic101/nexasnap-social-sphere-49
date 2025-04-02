@@ -1,7 +1,9 @@
+
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import { PostWithAuthor } from '@/types/supabase-custom';
+import { useToast } from '@/hooks/use-toast';
 
 type FeedSortOption = 'trending' | 'new' | 'top' | 'personalized';
 
@@ -26,6 +28,7 @@ export function useFeedAlgorithm({
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(1);
   const { user } = useAuth();
+  const { toast } = useToast();
 
   useEffect(() => {
     const fetchPosts = async () => {
@@ -111,9 +114,9 @@ export function useFeedAlgorithm({
         
         // Update posts - for page 1, replace all posts, otherwise append
         if (page === 1) {
-          setPosts(data || []);
+          setPosts(data as PostWithAuthor[] || []);
         } else {
-          setPosts(prevPosts => [...prevPosts, ...(data || [])]);
+          setPosts(prevPosts => [...prevPosts, ...(data as PostWithAuthor[] || [])]);
         }
         
         // Check if there are more posts to load
@@ -121,13 +124,18 @@ export function useFeedAlgorithm({
       } catch (error: any) {
         console.error('Error fetching posts:', error);
         setError(error.message || 'Failed to load posts');
+        toast({
+          title: "Error fetching posts",
+          description: error.message || 'Failed to load posts',
+          variant: "destructive"
+        });
       } finally {
         setLoading(false);
       }
     };
     
     fetchPosts();
-  }, [sortOption, squadId, user, page, limit]);
+  }, [sortOption, squadId, user, page, limit, toast]);
   
   // Function to calculate a combined rank score for posts
   const rankPosts = (postsToRank: PostWithAuthor[]) => {

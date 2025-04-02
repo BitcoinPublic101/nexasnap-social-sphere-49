@@ -14,11 +14,17 @@ serve(async (req) => {
   }
 
   try {
+    // Get environment variables and validate them
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.error("Missing required environment variables: SUPABASE_URL or SUPABASE_ANON_KEY");
+      throw new Error("Server configuration error");
+    }
+
     // Initialize Supabase client
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? ""
-    );
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 
     // Retrieve user from auth header
     const authHeader = req.headers.get("Authorization");
@@ -27,11 +33,18 @@ serve(async (req) => {
     }
     
     const token = authHeader.replace("Bearer ", "");
-    const { data: { user } } = await supabaseClient.auth.getUser(token);
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
+    
+    if (userError) {
+      console.error("User authentication error:", userError);
+      throw new Error("Authentication failed");
+    }
     
     if (!user) {
       throw new Error("User not authenticated");
     }
+
+    console.log(`Checking subscription for user: ${user.id}`);
 
     // Check if user has an active subscription
     const { data: subscriptionData, error: subscriptionError } = await supabaseClient
@@ -44,6 +57,7 @@ serve(async (req) => {
       .maybeSingle();
       
     if (subscriptionError) {
+      console.error("Subscription query error:", subscriptionError);
       throw subscriptionError;
     }
     
@@ -52,16 +66,28 @@ serve(async (req) => {
       .from("profiles")
       .select("is_premium, is_squad_creator")
       .eq("id", user.id)
-      .single();
+      .maybeSingle();
       
     if (profileError) {
+      console.error("Profile query error:", profileError);
       throw profileError;
+    }
+    
+    if (!profileData) {
+      console.warn(`No profile found for user ${user.id}`);
+      // Create a default profile response if not found
+      profileData = {
+        is_premium: false,
+        is_squad_creator: false
+      };
     }
     
     const now = new Date();
     const hasActiveSubscription = subscriptionData && 
       new Date(subscriptionData.expires_at) > now;
     
+    console.log(`User ${user.id} subscription status: active=${hasActiveSubscription}, premium=${profileData.is_premium}`);
+
     return new Response(
       JSON.stringify({
         isPremium: profileData.is_premium || (hasActiveSubscription && subscriptionData.subscription_type === "premium"),
@@ -73,7 +99,10 @@ serve(async (req) => {
   } catch (error: any) {
     console.error("Error checking subscription:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message || "An error occurred while checking subscription",
+        success: false
+      }),
       { 
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: error.status || 500,

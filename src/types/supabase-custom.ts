@@ -13,16 +13,16 @@ export type SystemBot = Database['public']['Tables']['system_bots']['Row'];
 
 // Custom types that extend the database types
 export interface PostWithAuthor extends Post {
-  profiles?: Profile;
-  squads?: Squad;
+  profiles: Profile | null;
+  squads?: Squad | null;
 }
 
 export interface CommentWithAuthor extends Comment {
-  profiles?: Profile;
+  profiles: Profile | null;
 }
 
 export interface SquadWithModerator extends Squad {
-  moderator?: Profile;
+  moderator: Profile | null;
 }
 
 // Types for API responses

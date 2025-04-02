@@ -10,6 +10,7 @@ import { useFeedAlgorithm } from '@/hooks/useFeedAlgorithm';
 import { Skeleton } from '@/components/ui/skeleton';
 import CreatePostCard from '@/components/CreatePostCard';
 import { PostWithAuthor } from '@/types/supabase-custom';
+import { useToast } from '@/hooks/use-toast';
 
 interface FeedProps {
   initialTab?: string;
@@ -23,68 +24,84 @@ const Feed = () => {
   const [hasMore, setHasMore] = useState<boolean>(true);
   const { user } = useAuth();
   const { rankPosts } = useFeedAlgorithm();
+  const { toast } = useToast();
 
   const fetchPosts = async (tab: string, page: number) => {
     setLoading(true);
-    let query = supabase
-      .from('posts')
-      .select(`
-        *,
-        profiles (username, avatar_url),
-        squads (name)
-      `)
-      .order('created_at', { ascending: false })
-      .range((page - 1) * 10, page * 10 - 1);
-
-    if (tab === 'following' && user) {
-      // Fetch IDs of users the current user is following
-      const { data: followingData, error: followingError } = await supabase
-        .from('follows')
-        .select('followed_user_id')
-        .eq('follower_user_id', user.id);
-
-      if (followingError) {
-        console.error("Error fetching following users:", followingError);
-        setLoading(false);
-        return;
-      }
-
-      const followingIds = followingData?.map(follow => follow.followed_user_id) || [];
-
-      // If the user is following someone, fetch posts from those users
-      if (followingIds.length > 0) {
-        query = query.in('author_id', followingIds);
-      } else {
-        // If the user isn't following anyone, return an empty array
-        setPosts([]);
-        setLoading(false);
-        setHasMore(false);
-        return;
-      }
-    }
-
-    if (tab === 'trending') {
-      query = supabase
+    try {
+      let query = supabase
         .from('posts')
         .select(`
           *,
-          profiles (username, avatar_url),
-          squads (name)
+          profiles:author_id (username, avatar_url),
+          squads:squad_id (name)
         `)
-        .order('upvotes', { ascending: false })
+        .order('created_at', { ascending: false })
         .range((page - 1) * 10, page * 10 - 1);
-    }
 
-    const { data, error, count } = await query;
+      if (tab === 'following' && user) {
+        // Check if squad_members table exists
+        const { data: userSquads, error: squadError } = await supabase
+          .from('squad_members')
+          .select('squad_id')
+          .eq('user_id', user.id);
 
-    if (error) {
-      console.error("Error fetching posts:", error);
-    } else {
-      const newPosts = data || [];
-      setPosts((prevPosts) => [...prevPosts, ...newPosts]);
-      setHasMore(newPosts.length === 10);
+        if (squadError) {
+          console.error("Error fetching user squads:", squadError);
+          toast({
+            title: "Error fetching content",
+            description: "There was an issue loading the feed. Please try again.",
+            variant: "destructive"
+          });
+        } else if (userSquads && userSquads.length > 0) {
+          // User is in some squads, show posts from those squads
+          const squadIds = userSquads.map(squad => squad.squad_id);
+          query = query.in('squad_id', squadIds);
+        } else {
+          // User isn't in any squads, show an empty feed
+          setPosts([]);
+          setLoading(false);
+          setHasMore(false);
+          return;
+        }
+      }
+
+      if (tab === 'trending') {
+        query = supabase
+          .from('posts')
+          .select(`
+            *,
+            profiles:author_id (username, avatar_url),
+            squads:squad_id (name)
+          `)
+          .order('upvotes', { ascending: false })
+          .range((page - 1) * 10, page * 10 - 1);
+      }
+
+      const { data, error, count } = await query;
+
+      if (error) {
+        console.error("Error fetching posts:", error);
+        toast({
+          title: "Error fetching content",
+          description: "There was an issue loading the feed. Please try again.",
+          variant: "destructive"
+        });
+      } else {
+        const newPosts = (data as PostWithAuthor[]) || [];
+        setPosts(prevPosts => [...prevPosts, ...newPosts]);
+        setHasMore(newPosts.length === 10);
+      }
+    } catch (error) {
+      console.error("Error in fetchPosts:", error);
+      toast({
+        title: "Error fetching content",
+        description: "There was an issue loading the feed. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -108,33 +125,7 @@ const Feed = () => {
     fetchPosts(activeTab, 1);
   };
 
-  // Function to transform posts to ensure they have the correct shape
-  const transformPosts = (rawPosts: any[]): PostWithAuthor[] => {
-    return rawPosts.map(post => ({
-      id: post.id,
-      title: post.title,
-      content: post.content,
-      image: post.image,
-      upvotes: post.upvotes || 0,
-      downvotes: post.downvotes || 0,
-      commentcount: post.commentcount || 0,
-      created_at: post.created_at,
-      author_id: post.author_id,
-      squad_id: post.squad_id,
-      is_boosted: post.is_boosted,
-      profiles: post.profiles || { username: 'Unknown', avatar_url: null },
-      squads: post.squads,
-      // Add any other properties needed from the PostWithAuthor type
-      updated_at: post.updated_at,
-      is_announcement: post.is_announcement,
-      is_flagged: post.is_flagged,
-      is_hidden: post.is_hidden,
-      report_count: post.report_count,
-      view_count: post.view_count
-    }));
-  };
-
-  const renderFeed = (posts: any[]) => {
+  const renderFeed = (posts: PostWithAuthor[]) => {
     if (loading && page === 1) {
       return (
         <>
@@ -181,19 +172,19 @@ const Feed = () => {
         </TabsList>
         
         <TabsContent value="for-you">
-          {renderFeed(transformPosts(posts))}
+          {renderFeed(posts)}
         </TabsContent>
         
         <TabsContent value="following">
-          {renderFeed(transformPosts(posts))}
+          {renderFeed(posts)}
         </TabsContent>
         
         <TabsContent value="trending">
-          {renderFeed(transformPosts(posts))}
+          {renderFeed(posts)}
         </TabsContent>
         
         <TabsContent value="latest">
-          {renderFeed(transformPosts(posts))}
+          {renderFeed(posts)}
         </TabsContent>
       </Tabs>
       
