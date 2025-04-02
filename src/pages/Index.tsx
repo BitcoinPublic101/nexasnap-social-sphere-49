@@ -1,13 +1,39 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+
+import React from 'react';
+import { NavBar } from '@/components/ui/NavBar';
+import { Feed } from '@/components/Feed';
+import { CommunitySidebar } from '@/components/ui/CommunitySidebar';
+import { TrendingSideBar } from '@/components/TrendingSideBar';
+import { ThemeProvider } from '@/context/ThemeContext';
 
 const Index = () => {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
-        <p className="text-xl text-gray-600">Start building your amazing project here!</p>
+    <ThemeProvider>
+      <div className="min-h-screen flex flex-col">
+        <NavBar />
+        
+        <div className="flex flex-1">
+          {/* Left Sidebar - Hidden on mobile */}
+          <div className="hidden md:block w-64 shrink-0">
+            <div className="sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto no-scrollbar">
+              <CommunitySidebar />
+            </div>
+          </div>
+          
+          {/* Main Content */}
+          <main className="flex-1 px-4 py-6">
+            <Feed />
+          </main>
+          
+          {/* Right Sidebar - Hidden on mobile */}
+          <div className="hidden lg:block w-80 shrink-0 px-4 py-6">
+            <div className="sticky top-20">
+              <TrendingSideBar />
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
+    </ThemeProvider>
   );
 };
 
