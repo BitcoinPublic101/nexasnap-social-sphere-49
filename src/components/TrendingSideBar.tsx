@@ -1,118 +1,175 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Sparkles, Rocket, Flame, CircleUser, PlusCircle } from 'lucide-react';
-import { Separator } from '@/components/ui/separator';
+import { TrendingUp, Users, ArrowUpRight } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Link } from 'react-router-dom';
 
 export function TrendingSideBar() {
-  // Sample trending communities
-  const trendingCommunities = [
-    { id: 1, name: "r/ai", members: 250000, description: "Artificial Intelligence discussions" },
-    { id: 2, name: "r/robotics", members: 120000, description: "Robotics news and projects" },
-    { id: 3, name: "r/cryptocurrency", members: 890000, description: "Cryptocurrency market updates" },
-  ];
+  const [trendingPosts, setTrendingPosts] = useState<any[]>([]);
+  const [trendingSquads, setTrendingSquads] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const fetchTrending = async () => {
+      setIsLoading(true);
+      try {
+        // Fetch trending posts
+        const { data: postsData, error: postsError } = await supabase
+          .from('posts')
+          .select(`
+            id,
+            title,
+            upvotes,
+            downvotes,
+            commentcount,
+            created_at,
+            squads:squad_id(name)
+          `)
+          .eq('is_hidden', false)
+          .order('upvotes', { ascending: false })
+          .limit(5);
+        
+        if (postsError) throw postsError;
+        setTrendingPosts(postsData || []);
+        
+        // Fetch trending squads
+        const { data: squadsData, error: squadsError } = await supabase
+          .from('squads')
+          .select('*')
+          .eq('is_active', true)
+          .order('member_count', { ascending: false })
+          .limit(5);
+        
+        if (squadsError) throw squadsError;
+        setTrendingSquads(squadsData || []);
+      } catch (error: any) {
+        console.error('Error fetching trending data:', error);
+        toast({
+          title: 'Error',
+          description: error.message || 'Failed to load trending data',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchTrending();
+  }, [toast]);
+
+  if (isLoading) {
+    return (
+      <div>
+        <Card className="mb-6">
+          <CardHeader>
+            <Skeleton className="h-5 w-40" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-40" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-4">
-      {/* Filters Card */}
-      <Card className="border-gray-200 dark:border-gray-800">
+    <div>
+      <Card className="mb-6">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Popular Feeds</CardTitle>
+          <CardTitle className="text-md flex items-center gap-2">
+            <TrendingUp className="h-4 w-4" />
+            <span>Trending Posts</span>
+          </CardTitle>
         </CardHeader>
-        <CardContent className="pb-3 space-y-2">
-          <Button variant="ghost" className="w-full justify-start gap-2">
-            <Sparkles className="h-5 w-5 text-reddit-orange" />
-            <span>Popular</span>
-          </Button>
-          <Button variant="ghost" className="w-full justify-start gap-2">
-            <Flame className="h-5 w-5 text-reddit-orange" />
-            <span>Hot</span>
-          </Button>
-          <Button variant="ghost" className="w-full justify-start gap-2">
-            <Rocket className="h-5 w-5 text-blue-500" />
-            <span>Rising</span>
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Trending Communities Card */}
-      <Card className="border-gray-200 dark:border-gray-800">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Trending Communities</CardTitle>
-        </CardHeader>
-        <CardContent className="pb-3">
-          <div className="space-y-2">
-            {trendingCommunities.map((community) => (
-              <div key={community.id} className="group">
-                <Button variant="ghost" className="w-full p-2 h-auto justify-start rounded-lg">
-                  <div className="flex items-start gap-3 text-left">
-                    <CircleUser className="h-8 w-8 mt-1 text-gray-600 dark:text-gray-400" />
-                    <div className="flex-1">
-                      <p className="font-medium">{community.name}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {(community.members / 1000).toFixed(1)}k members
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mt-1">
-                        {community.description}
-                      </p>
-                    </div>
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
-                      className="h-7 rounded-full text-xs ml-2 self-center mt-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      Join
-                    </Button>
+        <CardContent className="space-y-4">
+          {trendingPosts.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No trending posts at the moment.</p>
+          ) : (
+            trendingPosts.map((post, index) => (
+              <Link key={post.id} to={`/post/${post.id}`} className="no-underline">
+                <div className="flex items-start gap-3 group">
+                  <div className="flex-shrink-0 w-5 text-muted-foreground font-medium">
+                    {index + 1}
                   </div>
-                </Button>
-              </div>
-            ))}
-          </div>
-          
-          <Separator className="my-3" />
-          
-          <Button 
-            variant="ghost" 
-            className="w-full justify-center gap-1 text-sm text-reddit-orange"
-          >
-            <span>View All Communities</span>
-          </Button>
+                  <div className="flex-1">
+                    <h4 className="text-sm font-medium leading-snug group-hover:text-primary line-clamp-2">
+                      {post.title}
+                    </h4>
+                    <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
+                      <span>{post.upvotes - post.downvotes} upvotes</span>
+                      <span>•</span>
+                      <span>{post.commentcount} comments</span>
+                      <span>•</span>
+                      <span>r/{post.squads?.name}</span>
+                    </div>
+                  </div>
+                  <ArrowUpRight className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground" />
+                </div>
+              </Link>
+            ))
+          )}
         </CardContent>
       </Card>
-
-      {/* Create Community Card */}
-      <Card className="border-gray-200 dark:border-gray-800">
-        <CardContent className="p-4">
-          <div className="flex flex-col items-center gap-3 text-center">
-            <div className="bg-gray-100 dark:bg-gray-800 p-3 rounded-full">
-              <PlusCircle className="h-6 w-6 text-reddit-orange" />
-            </div>
-            <div>
-              <h4 className="font-medium">Create Your Community</h4>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Start your own Squad and build a community around your interests
-              </p>
-            </div>
-            <Button className="bg-reddit-orange hover:bg-orange-600 w-full">
-              Create Squad
+      
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-md flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            <span>Popular Squads</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {trendingSquads.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No squads available at the moment.</p>
+          ) : (
+            trendingSquads.map((squad) => (
+              <Link key={squad.id} to={`/r/${squad.name}`} className="no-underline">
+                <div className="flex items-start gap-3 group">
+                  <div className="flex-1">
+                    <h4 className="text-sm font-medium leading-snug group-hover:text-primary">
+                      r/{squad.name}
+                    </h4>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {squad.member_count.toLocaleString()} members
+                    </div>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="h-8 w-16 text-xs"
+                  >
+                    Join
+                  </Button>
+                </div>
+              </Link>
+            ))
+          )}
+          
+          <div className="pt-2">
+            <Button variant="ghost" size="sm" className="w-full text-xs">
+              View All Squads
             </Button>
           </div>
         </CardContent>
       </Card>
-
-      {/* Footer */}
-      <div className="text-xs text-gray-500 dark:text-gray-400 p-3">
-        <div className="flex flex-wrap gap-x-3 gap-y-1">
-          <a href="#" className="hover:underline">Help</a>
-          <a href="#" className="hover:underline">About</a>
-          <a href="#" className="hover:underline">Terms</a>
-          <a href="#" className="hover:underline">Privacy Policy</a>
-        </div>
-        <div className="mt-3">
-          &copy; {new Date().getFullYear()} NexaSnap, Inc. All rights reserved.
-        </div>
-      </div>
     </div>
   );
 }

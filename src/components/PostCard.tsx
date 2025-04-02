@@ -1,160 +1,393 @@
 
-import React, { useState } from 'react';
-import { ArrowDown, ArrowUp, MessageSquare, Share, Bookmark, MoreHorizontal, Image } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Avatar } from '@/components/ui/avatar';
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger 
-} from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { ArrowUpIcon, ArrowDownIcon, MessageSquare, Bookmark, Share } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
-interface PostCardProps {
-  post: {
-    id: number;
-    title: string;
-    content: string;
-    squad: string;
-    author: string;
-    timestamp: string;
-    votes: number;
-    commentCount: number;
-    tags?: string[];
-    image?: string;
-  };
+interface PostProps {
+  id: number;
+  title: string;
+  content: string;
+  timestamp: string;
+  votes: number;
+  commentCount: number;
+  squad: string;
+  author: string;
+  image?: string;
+  tags?: string[];
 }
 
-export function PostCard({ post }: PostCardProps) {
-  const [votes, setVotes] = useState(post.votes);
-  const [userVote, setUserVote] = useState<'up' | 'down' | null>(null);
-
-  const handleUpvote = () => {
-    if (userVote === 'up') {
-      setUserVote(null);
-      setVotes(votes - 1);
-    } else {
-      if (userVote === 'down') {
-        setVotes(votes + 2);
-      } else {
-        setVotes(votes + 1);
+export function PostCard({ post }: { post: PostProps }) {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [voteStatus, setVoteStatus] = useState<'upvote' | 'downvote' | null>(null);
+  const [voteCount, setVoteCount] = useState(post.votes);
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [authorAvatar, setAuthorAvatar] = useState<string | null>(null);
+  
+  useEffect(() => {
+    const fetchUserData = async () => {
+      if (!user) return;
+      
+      // Check if post is voted by current user
+      const { data: voteData } = await supabase
+        .from('votes')
+        .select('is_upvote')
+        .eq('user_id', user.id)
+        .eq('post_id', post.id)
+        .maybeSingle();
+      
+      if (voteData) {
+        setVoteStatus(voteData.is_upvote ? 'upvote' : 'downvote');
       }
-      setUserVote('up');
+      
+      // Check if post is bookmarked
+      const { data: bookmarkData } = await supabase
+        .from('bookmarks')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('post_id', post.id)
+        .maybeSingle();
+      
+      setIsBookmarked(!!bookmarkData);
+      
+      // Fetch author avatar
+      const { data: authorData } = await supabase
+        .from('profiles')
+        .select('avatar_url')
+        .eq('username', post.author)
+        .maybeSingle();
+      
+      if (authorData?.avatar_url) {
+        setAuthorAvatar(authorData.avatar_url);
+      }
+    };
+    
+    fetchUserData();
+  }, [user, post.id, post.author]);
+  
+  const handleVote = async (isUpvote: boolean) => {
+    if (!user) {
+      toast({
+        title: 'Authentication required',
+        description: 'Please sign in to vote',
+        variant: 'default',
+      });
+      return;
+    }
+    
+    const newVoteStatus = voteStatus === (isUpvote ? 'upvote' : 'downvote') ? null : (isUpvote ? 'upvote' : 'downvote');
+    const oldVoteStatus = voteStatus;
+    
+    // Update UI optimistically
+    setVoteStatus(newVoteStatus);
+    
+    // Calculate new vote count
+    let voteDelta = 0;
+    
+    if (oldVoteStatus === 'upvote' && !isUpvote) {
+      // Changing from upvote to downvote
+      voteDelta = -2;
+    } else if (oldVoteStatus === 'downvote' && isUpvote) {
+      // Changing from downvote to upvote
+      voteDelta = 2;
+    } else if (oldVoteStatus === 'upvote' && isUpvote) {
+      // Removing upvote
+      voteDelta = -1;
+    } else if (oldVoteStatus === 'downvote' && !isUpvote) {
+      // Removing downvote
+      voteDelta = 1;
+    } else if (isUpvote) {
+      // Adding upvote
+      voteDelta = 1;
+    } else {
+      // Adding downvote
+      voteDelta = -1;
+    }
+    
+    setVoteCount(prevCount => prevCount + voteDelta);
+    
+    try {
+      if (oldVoteStatus) {
+        if (oldVoteStatus === (isUpvote ? 'upvote' : 'downvote')) {
+          // If clicking the same vote button, remove the vote
+          await supabase
+            .from('votes')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('post_id', post.id);
+          
+          // Update post vote count in database
+          await supabase
+            .from('posts')
+            .update({
+              upvotes: isUpvote ? supabase.rpc('decrement', { row_count: 1 }) : undefined,
+              downvotes: !isUpvote ? supabase.rpc('decrement', { row_count: 1 }) : undefined
+            })
+            .eq('id', post.id);
+        } else {
+          // If changing vote direction, update the vote
+          await supabase
+            .from('votes')
+            .update({ is_upvote: isUpvote })
+            .eq('user_id', user.id)
+            .eq('post_id', post.id);
+          
+          // Update post vote count in database
+          await supabase
+            .from('posts')
+            .update({
+              upvotes: isUpvote ? supabase.rpc('increment', { row_count: 1 }) : supabase.rpc('decrement', { row_count: 1 }),
+              downvotes: isUpvote ? supabase.rpc('decrement', { row_count: 1 }) : supabase.rpc('increment', { row_count: 1 })
+            })
+            .eq('id', post.id);
+        }
+      } else {
+        // If no existing vote, insert new vote
+        await supabase
+          .from('votes')
+          .insert({
+            user_id: user.id,
+            post_id: post.id,
+            is_upvote: isUpvote
+          });
+        
+        // Update post vote count in database
+        await supabase
+          .from('posts')
+          .update({
+            upvotes: isUpvote ? supabase.rpc('increment', { row_count: 1 }) : undefined,
+            downvotes: !isUpvote ? supabase.rpc('increment', { row_count: 1 }) : undefined
+          })
+          .eq('id', post.id);
+      }
+    } catch (error: any) {
+      console.error('Error voting:', error);
+      
+      // Revert UI changes on error
+      setVoteStatus(oldVoteStatus);
+      setVoteCount(post.votes);
+      
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to register vote',
+        variant: 'destructive',
+      });
     }
   };
-
-  const handleDownvote = () => {
-    if (userVote === 'down') {
-      setUserVote(null);
-      setVotes(votes + 1);
-    } else {
-      if (userVote === 'up') {
-        setVotes(votes - 2);
-      } else {
-        setVotes(votes - 1);
-      }
-      setUserVote('down');
+  
+  const handleBookmark = async () => {
+    if (!user) {
+      toast({
+        title: 'Authentication required',
+        description: 'Please sign in to bookmark posts',
+        variant: 'default',
+      });
+      return;
     }
+    
+    const wasBookmarked = isBookmarked;
+    
+    // Update UI optimistically
+    setIsBookmarked(!wasBookmarked);
+    
+    try {
+      if (wasBookmarked) {
+        // Remove bookmark
+        await supabase
+          .from('bookmarks')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('post_id', post.id);
+      } else {
+        // Add bookmark
+        await supabase
+          .from('bookmarks')
+          .insert({
+            user_id: user.id,
+            post_id: post.id
+          });
+      }
+    } catch (error: any) {
+      console.error('Error bookmarking:', error);
+      
+      // Revert UI changes on error
+      setIsBookmarked(wasBookmarked);
+      
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update bookmark',
+        variant: 'destructive',
+      });
+    }
+  };
+  
+  const handleShare = () => {
+    const url = `${window.location.origin}/post/${post.id}`;
+    navigator.clipboard.writeText(url);
+    
+    toast({
+      title: 'Link copied',
+      description: 'Post link has been copied to clipboard',
+    });
+  };
+  
+  const truncateContent = (content: string, maxLength: number = 250) => {
+    if (content.length <= maxLength) return content;
+    return content.substring(0, maxLength) + '...';
   };
 
   return (
-    <Card className="mb-4 overflow-hidden border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 transition duration-200 animate-slide-up">
-      <div className="flex">
-        {/* Voting sidebar */}
-        <div className="flex flex-col items-center px-2 py-2 bg-gray-50 dark:bg-reddit-darkCard">
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className={`px-1 ${userVote === 'up' ? 'text-reddit-orange' : 'text-gray-500 dark:text-gray-400'}`}
-            onClick={handleUpvote}
-          >
-            <ArrowUp className="h-5 w-5" />
-          </Button>
-          <span className="text-sm font-medium my-1">{votes}</span>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className={`px-1 ${userVote === 'down' ? 'text-reddit-blue' : 'text-gray-500 dark:text-gray-400'}`}
-            onClick={handleDownvote}
-          >
-            <ArrowDown className="h-5 w-5" />
-          </Button>
+    <Card className="mb-4">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Link to={`/r/${post.squad}`} className="text-sm font-medium hover:underline">
+              r/{post.squad}
+            </Link>
+            <span className="text-muted-foreground">•</span>
+            <div className="flex items-center gap-1">
+              <span className="text-sm text-muted-foreground">Posted by</span>
+              <Link to={`/u/${post.author}`} className="text-sm hover:underline flex items-center gap-1">
+                <Avatar className="h-4 w-4">
+                  <AvatarImage src={authorAvatar || ''} />
+                  <AvatarFallback className="text-[8px]">
+                    {post.author.substring(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <span>u/{post.author}</span>
+              </Link>
+            </div>
+            <span className="text-muted-foreground">•</span>
+            <span className="text-sm text-muted-foreground">{post.timestamp}</span>
+          </div>
         </div>
-
-        {/* Post content */}
-        <div className="flex-1">
-          <CardHeader className="p-3 pb-0">
-            <div className="flex items-center text-xs text-gray-500 dark:text-gray-400">
-              <span className="font-medium text-gray-900 dark:text-white">
-                {post.squad}
-              </span>
-              <span className="mx-1">•</span>
-              <span>Posted by u/{post.author}</span>
-              <span className="mx-1">•</span>
-              <span>{post.timestamp}</span>
-            </div>
-            <h3 className="text-lg font-semibold mt-1 text-left">{post.title}</h3>
-          </CardHeader>
+        <Link to={`/post/${post.id}`} className="hover:underline mt-2 block">
+          <h3 className="text-lg font-semibold">{post.title}</h3>
+        </Link>
+      </CardHeader>
+      
+      <CardContent>
+        <Link to={`/post/${post.id}`} className="no-underline text-foreground">
+          <div className="prose prose-sm dark:prose-invert max-w-none line-clamp-3">
+            {truncateContent(post.content)}
+          </div>
           
-          <CardContent className="p-3">
-            <div className="text-sm text-left">
-              {post.content}
+          {post.image && (
+            <div className="mt-3 max-h-80 overflow-hidden rounded-md">
+              <img 
+                src={post.image} 
+                alt={post.title} 
+                className="w-full object-contain bg-black/5 dark:bg-white/5" 
+              />
             </div>
-            
-            {post.image && (
-              <div className="mt-3 rounded-md overflow-hidden">
-                <img 
-                  src={post.image} 
-                  alt={post.title}
-                  className="w-full object-cover max-h-96"
-                />
-              </div>
-            )}
-            
-            {post.tags && post.tags.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-3">
-                {post.tags.map((tag, index) => (
-                  <Badge key={index} variant="secondary" className="text-xs">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </CardContent>
+          )}
           
-          <CardFooter className="p-0 border-t border-gray-100 dark:border-gray-800">
-            <div className="w-full flex items-center justify-between px-3 py-2">
-              <Button variant="ghost" size="sm" className="text-gray-500 dark:text-gray-400 gap-1">
-                <MessageSquare className="h-4 w-4" />
-                <span className="text-xs">{post.commentCount} Comments</span>
+          {post.tags && post.tags.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-3">
+              {post.tags.map((tag) => (
+                <span 
+                  key={tag} 
+                  className="bg-secondary text-secondary-foreground text-xs px-2 py-1 rounded-full"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+        </Link>
+      </CardContent>
+      
+      <CardFooter className="flex flex-wrap gap-2 pt-0">
+        <TooltipProvider>
+          <div className="flex items-center space-x-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className={`px-2 ${voteStatus === 'upvote' ? 'bg-primary/10 text-primary' : ''}`}
+                  onClick={() => handleVote(true)}
+                >
+                  <ArrowUpIcon className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Upvote</TooltipContent>
+            </Tooltip>
+            
+            <span className="min-w-8 text-center font-medium">
+              {voteCount}
+            </span>
+            
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className={`px-2 ${voteStatus === 'downvote' ? 'bg-primary/10 text-primary' : ''}`}
+                  onClick={() => handleVote(false)}
+                >
+                  <ArrowDownIcon className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Downvote</TooltipContent>
+            </Tooltip>
+          </div>
+          
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="flex items-center gap-2"
+                asChild
+              >
+                <Link to={`/post/${post.id}`}>
+                  <MessageSquare className="h-4 w-4" />
+                  <span>{post.commentCount} comments</span>
+                </Link>
               </Button>
-              
-              <div className="flex gap-1">
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-500 dark:text-gray-400">
-                  <Share className="h-4 w-4" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-500 dark:text-gray-400">
-                  <Bookmark className="h-4 w-4" />
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-500 dark:text-gray-400">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem>Hide Post</DropdownMenuItem>
-                    <DropdownMenuItem>Report</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </div>
-          </CardFooter>
-        </div>
-      </div>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Comments</TooltipContent>
+          </Tooltip>
+          
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className={`flex items-center gap-2 ${isBookmarked ? 'bg-primary/10 text-primary' : ''}`}
+                onClick={handleBookmark}
+              >
+                <Bookmark className={`h-4 w-4 ${isBookmarked ? 'fill-current' : ''}`} />
+                <span>{isBookmarked ? 'Saved' : 'Save'}</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{isBookmarked ? 'Unsave' : 'Save'}</TooltipContent>
+          </Tooltip>
+          
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="flex items-center gap-2"
+                onClick={handleShare}
+              >
+                <Share className="h-4 w-4" />
+                <span>Share</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Copy link</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </CardFooter>
     </Card>
   );
 }

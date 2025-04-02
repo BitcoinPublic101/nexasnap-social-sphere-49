@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/context/AuthContext";
+import { ThemeProvider } from "@/context/ThemeContext";
 import RouteGuard from "@/components/RouteGuard";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
@@ -13,38 +14,66 @@ import SignUp from "./pages/SignUp";
 import Profile from "./pages/Profile";
 import ResetPassword from "./pages/ResetPassword";
 import AuthCallback from "./pages/AuthCallback";
+import UserProfile from "./pages/UserProfile";
+import SquadPage from "./pages/SquadPage";
+import PostPage from "./pages/PostPage";
+import Settings from "./pages/Settings";
+import AdminDashboard from "./pages/AdminDashboard";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <AuthProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<SignUp />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/auth/callback" element={<AuthCallback />} />
-            
-            {/* Protected routes */}
-            <Route 
-              path="/profile" 
-              element={
-                <RouteGuard>
-                  <Profile />
-                </RouteGuard>
-              } 
-            />
-            
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<SignUp />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/auth/callback" element={<AuthCallback />} />
+              
+              {/* New routes for core pages */}
+              <Route path="/u/:username" element={<UserProfile />} />
+              <Route path="/r/:squadName" element={<SquadPage />} />
+              <Route path="/post/:postId" element={<PostPage />} />
+              
+              {/* Protected routes */}
+              <Route 
+                path="/profile" 
+                element={
+                  <RouteGuard>
+                    <Profile />
+                  </RouteGuard>
+                } 
+              />
+              <Route 
+                path="/settings" 
+                element={
+                  <RouteGuard>
+                    <Settings />
+                  </RouteGuard>
+                } 
+              />
+              <Route 
+                path="/admin" 
+                element={
+                  <RouteGuard>
+                    <AdminDashboard />
+                  </RouteGuard>
+                } 
+              />
+              
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </AuthProvider>
+      </ThemeProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );
