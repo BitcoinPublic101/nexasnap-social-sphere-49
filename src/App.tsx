@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { HelmetProvider } from "react-helmet-async";
 import RouteGuard from "@/components/RouteGuard";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
@@ -31,64 +32,66 @@ const App = () => (
     <TooltipProvider>
       <ThemeProvider>
         <AuthProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/signup" element={<SignUp />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/auth/callback" element={<AuthCallback />} />
-              
-              {/* Core pages */}
-              <Route path="/u/:username" element={<UserProfile />} />
-              <Route path="/r/:squadName" element={<SquadPage />} />
-              <Route path="/post/:postId" element={<PostPage />} />
-              <Route path="/premium" element={<Premium />} />
-              
-              {/* Protected routes */}
-              <Route 
-                path="/profile" 
-                element={
-                  <RouteGuard>
-                    <Profile />
-                  </RouteGuard>
-                } 
-              />
-              <Route 
-                path="/settings" 
-                element={
-                  <RouteGuard>
-                    <Settings />
-                  </RouteGuard>
-                } 
-              />
-              <Route 
-                path="/admin" 
-                element={
-                  <RouteGuard>
-                    <AdminDashboard />
-                  </RouteGuard>
-                } 
-              />
-              <Route 
-                path="/bot-management" 
-                element={
-                  <RouteGuard>
-                    <BotManagement />
-                  </RouteGuard>
-                } 
-              />
-              
-              {/* Payment success/cancel routes */}
-              <Route path="/payment-success" element={<PaymentSuccess />} />
-              <Route path="/payment-canceled" element={<PaymentCanceled />} />
-              
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
+          <HelmetProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <Routes>
+                <Route path="/" element={<Index />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/signup" element={<SignUp />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/auth/callback" element={<AuthCallback />} />
+                
+                {/* Core pages */}
+                <Route path="/u/:username" element={<UserProfile />} />
+                <Route path="/r/:squadName" element={<SquadPage />} />
+                <Route path="/post/:postId" element={<PostPage />} />
+                <Route path="/premium" element={<Premium />} />
+                
+                {/* Protected routes */}
+                <Route 
+                  path="/profile" 
+                  element={
+                    <RouteGuard>
+                      <Profile />
+                    </RouteGuard>
+                  } 
+                />
+                <Route 
+                  path="/settings" 
+                  element={
+                    <RouteGuard>
+                      <Settings />
+                    </RouteGuard>
+                  } 
+                />
+                <Route 
+                  path="/admin" 
+                  element={
+                    <RouteGuard>
+                      <AdminDashboard />
+                    </RouteGuard>
+                  } 
+                />
+                <Route 
+                  path="/bot-management" 
+                  element={
+                    <RouteGuard>
+                      <BotManagement />
+                    </RouteGuard>
+                  } 
+                />
+                
+                {/* Payment success/cancel routes */}
+                <Route path="/payment-success" element={<PaymentSuccess />} />
+                <Route path="/payment-canceled" element={<PaymentCanceled />} />
+                
+                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </BrowserRouter>
+          </HelmetProvider>
         </AuthProvider>
       </ThemeProvider>
     </TooltipProvider>

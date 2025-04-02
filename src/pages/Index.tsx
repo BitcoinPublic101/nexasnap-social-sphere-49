@@ -1,15 +1,22 @@
 
 import React from 'react';
 import { NavBar } from '@/components/ui/NavBar';
-import { Feed } from '@/components/Feed';
+import Feed from '@/components/Feed';
 import { CommunitySidebar } from '@/components/ui/CommunitySidebar';
 import { TrendingSideBar } from '@/components/TrendingSideBar';
 import { ThemeProvider } from '@/context/ThemeContext';
+import SEOMetaTags from '@/components/SEOMetaTags';
 
 const Index = () => {
   return (
     <ThemeProvider>
       <div className="min-h-screen flex flex-col">
+        <SEOMetaTags 
+          title="Home"
+          description="Join the NexaSnap community to discover and share content with like-minded individuals."
+          keywords={['social media', 'community', 'posts', 'trending']}
+        />
+        
         <NavBar />
         
         <div className="flex flex-1">

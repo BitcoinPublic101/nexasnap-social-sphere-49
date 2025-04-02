@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Helmet } from 'react-helmet';
+import { Helmet } from 'react-helmet-async';
 
 interface SEOMetaTagsProps {
   title: string;
@@ -27,7 +27,7 @@ const SEOMetaTags: React.FC<SEOMetaTagsProps> = ({
 }) => {
   // Format the title to include the site name
   const formattedTitle = `${title} | NexaSnap`;
-  const siteUrl = url || window.location.href;
+  const siteUrl = url || (typeof window !== 'undefined' ? window.location.href : 'https://nexasnap.com');
   const imageUrl = image || 'https://nexasnap.com/default-og-image.jpg'; // Replace with your default image
 
   return (
