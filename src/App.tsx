@@ -1,3 +1,4 @@
+
 import React from 'react';
 import {
   createBrowserRouter,
@@ -16,65 +17,78 @@ import PostDetails from './pages/PostDetails';
 import SquadPage from './pages/SquadPage';
 import UserProfilePage from './pages/UserProfilePage';
 import BotManagement from './pages/BotManagement';
+import ResetPassword from './pages/ResetPassword';
+import AuthCallback from './pages/AuthCallback';
+import { AuthProvider } from './context/AuthContext';
 
 const App = () => {
   return (
-    <RouterProvider
-      router={createBrowserRouter([
-        {
-          path: '/',
-          element: <Index />,
-        },
-        {
-          path: '/login',
-          element: <Login />,
-        },
-        {
-          path: '/signup',
-          element: <SignUp />,
-        },
-        {
-          path: '/explore',
-          element: <Explore />,
-        },
-        {
-          path: '/popular',
-          element: <Popular />,
-        },
-        {
-          path: '/following',
-          element: <Following />,
-        },
-        {
-          path: '/trending',
-          element: <Trending />,
-        },
-        {
-          path: '/latest',
-          element: <Latest />,
-        },
-        {
-          path: '/post/:postId',
-          element: <PostDetails />,
-        },
-        {
-          path: '/r/:squadName',
-          element: <SquadPage />,
-        },
-        {
-          path: '/u/:username',
-          element: <UserProfilePage />,
-        },
-        {
-          path: '/admin/bots',
-          element: <BotManagement />,
-        },
-        {
-          path: '*',
-          element: <NotFound />,
-        },
-      ])}
-    />
+    <AuthProvider>
+      <RouterProvider
+        router={createBrowserRouter([
+          {
+            path: '/',
+            element: <Index />,
+          },
+          {
+            path: '/login',
+            element: <Login />,
+          },
+          {
+            path: '/signup',
+            element: <SignUp />,
+          },
+          {
+            path: '/explore',
+            element: <Explore />,
+          },
+          {
+            path: '/popular',
+            element: <Popular />,
+          },
+          {
+            path: '/following',
+            element: <Following />,
+          },
+          {
+            path: '/trending',
+            element: <Trending />,
+          },
+          {
+            path: '/latest',
+            element: <Latest />,
+          },
+          {
+            path: '/post/:postId',
+            element: <PostDetails />,
+          },
+          {
+            path: '/r/:squadName',
+            element: <SquadPage />,
+          },
+          {
+            path: '/u/:username',
+            element: <UserProfilePage />,
+          },
+          {
+            path: '/admin/bots',
+            element: <BotManagement />,
+          },
+          {
+            path: '/reset-password',
+            element: <ResetPassword />,
+          },
+          {
+            path: '/auth/callback',
+            element: <AuthCallback />,
+          },
+          {
+            path: '*',
+            element: <NotFound />,
+          },
+        ])}
+      />
+    </AuthProvider>
   );
 };
 

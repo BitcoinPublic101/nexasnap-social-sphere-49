@@ -41,11 +41,17 @@ export interface ApiResponse<T> {
   error: string | null;
 }
 
-// Fix BotManagement.tsx type issues by extending SystemBot
+// Extended bot type with additional fields needed by UI
 export interface ExtendedSystemBot extends SystemBot {
-  personality?: string; // Add this optional field for compatibility
-  avatar_url?: string; // Add this optional field for compatibility
+  personality: string; // Make these required, not optional
+  avatar_url: string; 
 }
 
 // Custom type for feed sort options
 export type FeedSortOption = 'trending' | 'new' | 'top' | 'personalized' | 'following';
+
+// Types for handling Supabase query errors
+export interface SelectQueryError<T = string> {
+  error: true;
+  message: T;
+}

@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import PostCard from '@/components/PostCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -9,9 +9,11 @@ import { useFeedAlgorithm } from '@/hooks/useFeedAlgorithm';
 import { Skeleton } from '@/components/ui/skeleton';
 import CreatePostCard from '@/components/CreatePostCard';
 import { useToast } from '@/hooks/use-toast';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { FeedSortOption } from '@/types/supabase-custom';
 
 const Feed = () => {
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState<string>('for-you');
   const { user } = useAuth();
   const { 
@@ -19,12 +21,55 @@ const Feed = () => {
     loading, 
     hasMore, 
     loadMore, 
-    refreshFeed 
+    refreshFeed,
+    changeSort,
+    currentSort 
   } = useFeedAlgorithm({ 
     initialSort: 'trending' 
   });
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  // Set initial tab based on current path
+  useEffect(() => {
+    const path = location.pathname;
+    
+    if (path === '/') {
+      setActiveTab('for-you');
+    } else if (path === '/following') {
+      setActiveTab('following');
+    } else if (path === '/trending') {
+      setActiveTab('trending');
+    } else if (path === '/latest') {
+      setActiveTab('latest');
+    }
+  }, [location.pathname]);
+
+  // Change sort when tab changes
+  useEffect(() => {
+    let sortOption: FeedSortOption = 'trending';
+    
+    switch (activeTab) {
+      case 'for-you':
+        sortOption = 'personalized';
+        break;
+      case 'following':
+        sortOption = 'following';
+        break;
+      case 'trending':
+        sortOption = 'trending';
+        break;
+      case 'latest':
+        sortOption = 'new';
+        break;
+      default:
+        sortOption = 'trending';
+    }
+    
+    if (sortOption !== currentSort) {
+      changeSort(sortOption);
+    }
+  }, [activeTab, changeSort, currentSort]);
 
   const renderFeed = () => {
     if (loading && posts.length === 0) {
