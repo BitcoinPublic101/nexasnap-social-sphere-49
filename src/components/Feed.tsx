@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import PostCard from '@/components/PostCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -28,15 +28,15 @@ const Feed = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  const fetchPosts = async (tab: string, page: number) => {
+  const fetchPosts = useCallback(async (tab: string, page: number) => {
     setLoading(true);
     try {
       let query = supabase
         .from('posts')
         .select(`
           *,
-          profiles(username, avatar_url),
-          squads(name)
+          profiles:author_id(username, avatar_url),
+          squads:squad_id(name)
         `)
         .order('created_at', { ascending: false })
         .range((page - 1) * 10, page * 10 - 1);
@@ -73,8 +73,8 @@ const Feed = () => {
           .from('posts')
           .select(`
             *,
-            profiles(username, avatar_url),
-            squads(name)
+            profiles:author_id(username, avatar_url),
+            squads:squad_id(name)
           `)
           .order('upvotes', { ascending: false })
           .range((page - 1) * 10, page * 10 - 1);
@@ -90,7 +90,7 @@ const Feed = () => {
           variant: "destructive"
         });
       } else {
-        const newPosts = data as PostWithAuthor[] || [];
+        const newPosts = data as unknown as PostWithAuthor[] || [];
         setPosts(prevPosts => page === 1 ? newPosts : [...prevPosts, ...newPosts]);
         setHasMore(newPosts.length === 10);
       }
@@ -104,14 +104,14 @@ const Feed = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, toast]);
 
   useEffect(() => {
     setPosts([]);
     setPage(1);
     setHasMore(true);
     fetchPosts(activeTab, 1);
-  }, [activeTab, user]);
+  }, [activeTab, fetchPosts]);
 
   const loadMorePosts = () => {
     if (!loading && hasMore) {

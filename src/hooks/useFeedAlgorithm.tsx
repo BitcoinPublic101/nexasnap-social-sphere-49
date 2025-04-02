@@ -38,8 +38,8 @@ export function useFeedAlgorithm({
           .from('posts')
           .select(`
             *,
-            profiles(username, avatar_url),
-            squads(name)
+            profiles:author_id(username, avatar_url),
+            squads:squad_id(name)
           `)
           .eq('is_hidden', false);
         
@@ -114,9 +114,9 @@ export function useFeedAlgorithm({
         
         // Update posts - for page 1, replace all posts, otherwise append
         if (page === 1) {
-          setPosts(data as PostWithAuthor[] || []);
+          setPosts(data as unknown as PostWithAuthor[] || []);
         } else {
-          setPosts(prevPosts => [...prevPosts, ...(data as PostWithAuthor[] || [])]);
+          setPosts(prevPosts => [...prevPosts, ...(data as unknown as PostWithAuthor[] || [])]);
         }
         
         // Check if there are more posts to load

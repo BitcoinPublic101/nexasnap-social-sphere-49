@@ -11,14 +11,24 @@ export type Notification = Database['public']['Tables']['notifications']['Row'];
 export type SquadMember = Database['public']['Tables']['squad_members']['Row'];
 export type SystemBot = Database['public']['Tables']['system_bots']['Row'];
 
+// For select queries that use the x:rel(y) format
+export interface PostAuthor {
+  username: string;
+  avatar_url?: string;
+}
+
+export interface SquadInfo {
+  name: string;
+}
+
 // Custom types that extend the database types
 export interface PostWithAuthor extends Post {
-  profiles: Profile | null;
-  squads?: Squad | null;
+  profiles: PostAuthor | null;
+  squads?: SquadInfo | null;
 }
 
 export interface CommentWithAuthor extends Comment {
-  profiles: Profile | null;
+  profiles: PostAuthor | null;
 }
 
 export interface SquadWithModerator extends Squad {
