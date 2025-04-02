@@ -11,7 +11,49 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
-      // Define your tables here based on your schema
+      profiles: {
+        Row: {
+          id: string
+          username: string
+          avatar_url: string | null
+          is_premium: boolean | null
+          is_squad_creator: boolean | null
+          stripe_customer_id: string | null
+        }
+      }
+      user_subscriptions: {
+        Row: {
+          id: string
+          user_id: string
+          subscription_type: string
+          subscription_tier: string
+          is_active: boolean
+          started_at: string
+          expires_at: string
+          cancelled_at: string | null
+          stripe_subscription_id: string | null
+          last_payment_at: string
+        }
+      }
+      post_boosts: {
+        Row: {
+          id: string
+          post_id: number
+          user_id: string
+          created_at: string
+          expires_at: string
+          is_active: boolean
+        }
+      }
+      posts: {
+        Row: {
+          id: number
+          title: string
+          content: string
+          author_id: string
+          is_boosted: boolean | null
+        }
+      }
     }
     Functions: {
       check_is_following: {

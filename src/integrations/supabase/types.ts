@@ -161,6 +161,41 @@ export type Database = {
         }
         Relationships: []
       }
+      post_boosts: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          is_active: boolean
+          post_id: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          is_active?: boolean
+          post_id: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          is_active?: boolean
+          post_id?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_boosts_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       posts: {
         Row: {
           author_id: string
@@ -171,6 +206,7 @@ export type Database = {
           id: number
           image: string | null
           is_announcement: boolean | null
+          is_boosted: boolean | null
           is_flagged: boolean | null
           is_hidden: boolean | null
           report_count: number | null
@@ -189,6 +225,7 @@ export type Database = {
           id?: number
           image?: string | null
           is_announcement?: boolean | null
+          is_boosted?: boolean | null
           is_flagged?: boolean | null
           is_hidden?: boolean | null
           report_count?: number | null
@@ -207,6 +244,7 @@ export type Database = {
           id?: number
           image?: string | null
           is_announcement?: boolean | null
+          is_boosted?: boolean | null
           is_flagged?: boolean | null
           is_hidden?: boolean | null
           report_count?: number | null
@@ -237,6 +275,9 @@ export type Database = {
           is_active: boolean | null
           is_admin: boolean | null
           is_moderator: boolean | null
+          is_premium: boolean | null
+          is_squad_creator: boolean | null
+          stripe_customer_id: string | null
           updated_at: string
           username: string
           website: string | null
@@ -251,6 +292,9 @@ export type Database = {
           is_active?: boolean | null
           is_admin?: boolean | null
           is_moderator?: boolean | null
+          is_premium?: boolean | null
+          is_squad_creator?: boolean | null
+          stripe_customer_id?: string | null
           updated_at?: string
           username: string
           website?: string | null
@@ -265,6 +309,9 @@ export type Database = {
           is_active?: boolean | null
           is_admin?: boolean | null
           is_moderator?: boolean | null
+          is_premium?: boolean | null
+          is_squad_creator?: boolean | null
+          stripe_customer_id?: string | null
           updated_at?: string
           username?: string
           website?: string | null
@@ -398,6 +445,45 @@ export type Database = {
           updated_at?: string
           updated_by?: string | null
           value?: Json
+        }
+        Relationships: []
+      }
+      user_subscriptions: {
+        Row: {
+          cancelled_at: string | null
+          expires_at: string
+          id: string
+          is_active: boolean
+          last_payment_at: string
+          started_at: string
+          stripe_subscription_id: string | null
+          subscription_tier: string
+          subscription_type: string
+          user_id: string
+        }
+        Insert: {
+          cancelled_at?: string | null
+          expires_at: string
+          id?: string
+          is_active?: boolean
+          last_payment_at?: string
+          started_at?: string
+          stripe_subscription_id?: string | null
+          subscription_tier: string
+          subscription_type: string
+          user_id: string
+        }
+        Update: {
+          cancelled_at?: string | null
+          expires_at?: string
+          id?: string
+          is_active?: boolean
+          last_payment_at?: string
+          started_at?: string
+          stripe_subscription_id?: string | null
+          subscription_tier?: string
+          subscription_type?: string
+          user_id?: string
         }
         Relationships: []
       }
