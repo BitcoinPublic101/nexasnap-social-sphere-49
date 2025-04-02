@@ -1,4 +1,3 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -19,6 +18,8 @@ import SquadPage from "./pages/SquadPage";
 import PostPage from "./pages/PostPage";
 import Settings from "./pages/Settings";
 import AdminDashboard from "./pages/AdminDashboard";
+import Premium from "./pages/Premium";
+import BotManagement from "./pages/BotManagement";
 
 const queryClient = new QueryClient();
 
@@ -37,10 +38,11 @@ const App = () => (
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/auth/callback" element={<AuthCallback />} />
               
-              {/* New routes for core pages */}
+              {/* Core pages */}
               <Route path="/u/:username" element={<UserProfile />} />
               <Route path="/r/:squadName" element={<SquadPage />} />
               <Route path="/post/:postId" element={<PostPage />} />
+              <Route path="/premium" element={<Premium />} />
               
               {/* Protected routes */}
               <Route 
@@ -67,6 +69,18 @@ const App = () => (
                   </RouteGuard>
                 } 
               />
+              <Route 
+                path="/bot-management" 
+                element={
+                  <RouteGuard>
+                    <BotManagement />
+                  </RouteGuard>
+                } 
+              />
+              
+              {/* Payment success/cancel routes */}
+              <Route path="/payment-success" element={<PaymentSuccess />} />
+              <Route path="/payment-canceled" element={<PaymentCanceled />} />
               
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
@@ -77,5 +91,55 @@ const App = () => (
     </TooltipProvider>
   </QueryClientProvider>
 );
+
+// Payment result pages
+const PaymentSuccess = () => {
+  return (
+    <div className="min-h-screen flex flex-col">
+      <NavBar />
+      <div className="flex-1 flex items-center justify-center">
+        <div className="max-w-md p-8 text-center">
+          <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+            <CheckIcon className="w-8 h-8 text-green-600" />
+          </div>
+          <h1 className="text-2xl font-bold mb-4">Payment Successful!</h1>
+          <p className="mb-6 text-muted-foreground">
+            Thank you for your payment. Your subscription has been activated successfully.
+          </p>
+          <Button asChild>
+            <Link to="/">Return to Home</Link>
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const PaymentCanceled = () => {
+  return (
+    <div className="min-h-screen flex flex-col">
+      <NavBar />
+      <div className="flex-1 flex items-center justify-center">
+        <div className="max-w-md p-8 text-center">
+          <div className="mx-auto w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
+            <XIcon className="w-8 h-8 text-red-600" />
+          </div>
+          <h1 className="text-2xl font-bold mb-4">Payment Cancelled</h1>
+          <p className="mb-6 text-muted-foreground">
+            Your payment was cancelled. No charges were made to your account.
+          </p>
+          <Button asChild>
+            <Link to="/premium">Try Again</Link>
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Add missing imports
+import { CheckIcon, XIcon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Link } from 'react-router-dom';
 
 export default App;

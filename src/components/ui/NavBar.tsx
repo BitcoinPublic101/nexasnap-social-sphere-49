@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Bell, Menu, Search, MessageSquare, LogOut, User, Settings, Plus } from 'lucide-react';
+import { Bell, Menu, Search, MessageSquare, LogOut, User, Settings, Plus, SparklesIcon } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,42 +15,41 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { Badge } from '@/components/ui/badge';
 
 export const NavBar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [notificationsCount, setNotificationsCount] = useState(0);
   const [messagesCount, setMessagesCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isPremium, setIsPremium] = useState(false);
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
-    // Fetch notification and message counts if user is logged in
     const fetchCounts = async () => {
       if (!user) return;
       
       try {
-        // Fetch unread notifications count
         const { count: notifCount, error: notifError } = await supabase
           .from('notifications')
           .select('*', { count: 'exact', head: true })
           .eq('user_id', user.id)
           .eq('seen', false);
         
-        if (!notifError) {
-          setNotificationsCount(notifCount || 0);
+        if (!notifError && notifCount !== null) {
+          setNotificationsCount(notifCount);
         }
         
-        // Fetch unread messages count
         const { count: msgCount, error: msgError } = await supabase
           .from('messages')
           .select('*', { count: 'exact', head: true })
           .eq('receiver_id', user.id)
           .eq('read', false);
         
-        if (!msgError) {
-          setMessagesCount(msgCount || 0);
+        if (!msgError && msgCount !== null) {
+          setMessagesCount(msgCount);
         }
       } catch (error) {
         console.error('Error fetching notification counts:', error);
@@ -59,6 +57,19 @@ export const NavBar = () => {
     };
     
     fetchCounts();
+    
+    if (user) {
+      const checkPremium = async () => {
+        try {
+          const { data } = await supabase.functions.invoke('check-subscription');
+          setIsPremium(data?.isPremium || false);
+        } catch (error) {
+          console.error('Error checking premium status:', error);
+        }
+      };
+      
+      checkPremium();
+    }
   }, [user]);
 
   const handleSignOut = async () => {
@@ -96,15 +107,12 @@ export const NavBar = () => {
       return;
     }
     
-    // Open the post creation dialog or navigate to create post page
-    // For now, we'll just scroll to the CreatePostCard
     document.querySelector('.CreatePostCard')?.scrollIntoView({ behavior: 'smooth' });
   };
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background">
       <div className="container flex h-14 items-center">
-        {/* Mobile Menu Toggle */}
         <Button 
           variant="ghost" 
           size="icon" 
@@ -115,12 +123,10 @@ export const NavBar = () => {
           <span className="sr-only">Toggle menu</span>
         </Button>
         
-        {/* Logo */}
         <Link to="/" className="flex items-center gap-2">
           <span className="text-xl font-bold">NexaSnap</span>
         </Link>
         
-        {/* Search Bar */}
         <form onSubmit={handleSearch} className="hidden md:flex flex-1 items-center justify-center px-4">
           <div className="relative w-full max-w-md">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -212,6 +218,12 @@ export const NavBar = () => {
                       <span>Admin Dashboard</span>
                     </DropdownMenuItem>
                   )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => navigate('/premium')} className="flex items-center">
+                    <SparklesIcon className="mr-2 h-4 w-4 text-yellow-500" />
+                    <span>{isPremium ? 'Premium Membership' : 'Upgrade to Premium'}</span>
+                    {isPremium && <Badge className="ml-2 bg-primary text-white text-xs">PREMIUM</Badge>}
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleSignOut}>
                     <LogOut className="mr-2 h-4 w-4" />

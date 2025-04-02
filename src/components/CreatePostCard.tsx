@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
@@ -22,7 +21,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertTriangle, Image, Link, Loader2 } from 'lucide-react';
 
-export const CreatePostCard = ({ squadId }: { squadId?: number }) => {
+export const CreatePostCard = ({ squadId, onPostCreated }: { squadId?: number, onPostCreated?: (post: any) => void }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -99,7 +98,7 @@ export const CreatePostCard = ({ squadId }: { squadId?: number }) => {
     }
   };
   
-  const handleSubmit = async () => {
+  const handleCreatePost = async () => {
     if (!user) {
       toast({
         title: 'Authentication required',
@@ -129,26 +128,20 @@ export const CreatePostCard = ({ squadId }: { squadId?: number }) => {
     
     setIsSubmitting(true);
     try {
-      // Insert post
+      // Create post in Supabase
       const { data: post, error } = await supabase
         .from('posts')
         .insert({
           title: title.trim(),
           content: content.trim(),
-          author_id: user.id,
-          squad_id: selectedSquad,
-          image: imageUrl.trim() || null
+          image: imageUrl.trim() || null,
+          squad_id: parseInt(selectedSquad, 10),
+          author_id: user.id
         })
         .select()
         .single();
       
       if (error) throw error;
-      
-      // Update squad post count
-      await supabase
-        .from('squads')
-        .update({ post_count: supabase.rpc('increment', { row_count: 1 }) })
-        .eq('id', selectedSquad);
       
       toast({
         title: 'Post created',
@@ -159,10 +152,12 @@ export const CreatePostCard = ({ squadId }: { squadId?: number }) => {
       setTitle('');
       setContent('');
       setImageUrl('');
-      setOpen(false);
+      setSelectedSquad('');
       
-      // Redirect to the post
-      navigate(`/post/${post.id}`);
+      // Refresh the feed (if callback provided)
+      if (onPostCreated) {
+        onPostCreated(post);
+      }
     } catch (error: any) {
       console.error('Error creating post:', error);
       toast({
@@ -300,7 +295,7 @@ export const CreatePostCard = ({ squadId }: { squadId?: number }) => {
             <Button variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSubmit} disabled={!title.trim() || !selectedSquad || isSubmitting}>
+            <Button onClick={handleCreatePost} disabled={!title.trim() || !selectedSquad || isSubmitting}>
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

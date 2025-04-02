@@ -1,393 +1,363 @@
 
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ArrowUpIcon, ArrowDownIcon, MessageSquare, Bookmark, Share } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { formatDistanceToNow } from 'date-fns';
+import {
+  MessageSquare,
+  ArrowUp,
+  ArrowDown,
+  Share2,
+  Bookmark,
+  BookmarkCheck,
+  Flag
+} from 'lucide-react';
 
-interface PostProps {
-  id: number;
-  title: string;
-  content: string;
-  timestamp: string;
-  votes: number;
-  commentCount: number;
-  squad: string;
-  author: string;
-  image?: string;
-  tags?: string[];
+interface PostCardProps {
+  post: {
+    id: number;
+    title: string;
+    content: string;
+    image?: string;
+    upvotes: number;
+    downvotes: number;
+    commentcount: number;
+    created_at: string;
+    author_id: string;
+    squad_id?: number;
+    profiles: {
+      username: string;
+      avatar_url?: string;
+    };
+    squads?: {
+      name: string;
+    };
+  };
+  compact?: boolean;
+  hideActions?: boolean;
+  onVote?: (postId: number, isUpvote: boolean) => void;
 }
 
-export function PostCard({ post }: { post: PostProps }) {
+const PostCard = ({ post, compact = false, hideActions = false, onVote }: PostCardProps) => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { toast } = useToast();
-  const [voteStatus, setVoteStatus] = useState<'upvote' | 'downvote' | null>(null);
-  const [voteCount, setVoteCount] = useState(post.votes);
-  const [isBookmarked, setIsBookmarked] = useState(false);
-  const [authorAvatar, setAuthorAvatar] = useState<string | null>(null);
-  
-  useEffect(() => {
-    const fetchUserData = async () => {
+  const [userVote, setUserVote] = useState<'upvote' | 'downvote' | null>(null);
+  const [voteScore, setVoteScore] = useState(post.upvotes - post.downvotes);
+  const [bookmarked, setBookmarked] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Check if user has already voted on this post
+  React.useEffect(() => {
+    const checkUserInteractions = async () => {
       if (!user) return;
       
-      // Check if post is voted by current user
-      const { data: voteData } = await supabase
-        .from('votes')
-        .select('is_upvote')
-        .eq('user_id', user.id)
-        .eq('post_id', post.id)
-        .maybeSingle();
-      
-      if (voteData) {
-        setVoteStatus(voteData.is_upvote ? 'upvote' : 'downvote');
-      }
-      
-      // Check if post is bookmarked
-      const { data: bookmarkData } = await supabase
-        .from('bookmarks')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('post_id', post.id)
-        .maybeSingle();
-      
-      setIsBookmarked(!!bookmarkData);
-      
-      // Fetch author avatar
-      const { data: authorData } = await supabase
-        .from('profiles')
-        .select('avatar_url')
-        .eq('username', post.author)
-        .maybeSingle();
-      
-      if (authorData?.avatar_url) {
-        setAuthorAvatar(authorData.avatar_url);
+      try {
+        setIsLoading(true);
+        
+        // Check vote
+        const { data: voteData } = await supabase
+          .from('votes')
+          .select('is_upvote')
+          .eq('post_id', post.id)
+          .eq('user_id', user.id)
+          .single();
+        
+        if (voteData) {
+          setUserVote(voteData.is_upvote ? 'upvote' : 'downvote');
+        }
+        
+        // Check bookmark
+        const { data: bookmarkData } = await supabase
+          .from('bookmarks')
+          .select('id')
+          .eq('post_id', post.id)
+          .eq('user_id', user.id)
+          .single();
+        
+        if (bookmarkData) {
+          setBookmarked(true);
+        }
+      } catch (error) {
+        // It's expected to get an error if the user hasn't voted/bookmarked
+        // So we don't show an error message
+      } finally {
+        setIsLoading(false);
       }
     };
     
-    fetchUserData();
-  }, [user, post.id, post.author]);
-  
+    checkUserInteractions();
+  }, [post.id, user]);
+
   const handleVote = async (isUpvote: boolean) => {
     if (!user) {
       toast({
         title: 'Authentication required',
-        description: 'Please sign in to vote',
-        variant: 'default',
+        description: 'Please sign in to vote on posts',
       });
+      navigate('/login');
       return;
     }
     
-    const newVoteStatus = voteStatus === (isUpvote ? 'upvote' : 'downvote') ? null : (isUpvote ? 'upvote' : 'downvote');
-    const oldVoteStatus = voteStatus;
-    
-    // Update UI optimistically
-    setVoteStatus(newVoteStatus);
-    
-    // Calculate new vote count
-    let voteDelta = 0;
-    
-    if (oldVoteStatus === 'upvote' && !isUpvote) {
-      // Changing from upvote to downvote
-      voteDelta = -2;
-    } else if (oldVoteStatus === 'downvote' && isUpvote) {
-      // Changing from downvote to upvote
-      voteDelta = 2;
-    } else if (oldVoteStatus === 'upvote' && isUpvote) {
-      // Removing upvote
-      voteDelta = -1;
-    } else if (oldVoteStatus === 'downvote' && !isUpvote) {
-      // Removing downvote
-      voteDelta = 1;
-    } else if (isUpvote) {
-      // Adding upvote
-      voteDelta = 1;
-    } else {
-      // Adding downvote
-      voteDelta = -1;
-    }
-    
-    setVoteCount(prevCount => prevCount + voteDelta);
-    
     try {
-      if (oldVoteStatus) {
-        if (oldVoteStatus === (isUpvote ? 'upvote' : 'downvote')) {
-          // If clicking the same vote button, remove the vote
+      setIsLoading(true);
+      
+      // Check if user has already voted
+      const { data: existingVote } = await supabase
+        .from('votes')
+        .select('*')
+        .eq('post_id', post.id)
+        .eq('user_id', user.id)
+        .single();
+      
+      let delta = 0;
+      
+      if (existingVote) {
+        if (existingVote.is_upvote === isUpvote) {
+          // Remove vote (clicking same button again)
           await supabase
             .from('votes')
             .delete()
-            .eq('user_id', user.id)
-            .eq('post_id', post.id);
+            .eq('id', existingVote.id);
           
-          // Update post vote count in database
-          await supabase
-            .from('posts')
-            .update({
-              upvotes: isUpvote ? supabase.rpc('decrement', { row_count: 1 }) : undefined,
-              downvotes: !isUpvote ? supabase.rpc('decrement', { row_count: 1 }) : undefined
-            })
-            .eq('id', post.id);
+          delta = isUpvote ? -1 : 1;
+          setUserVote(null);
         } else {
-          // If changing vote direction, update the vote
+          // Change vote
           await supabase
             .from('votes')
             .update({ is_upvote: isUpvote })
-            .eq('user_id', user.id)
-            .eq('post_id', post.id);
+            .eq('id', existingVote.id);
           
-          // Update post vote count in database
-          await supabase
-            .from('posts')
-            .update({
-              upvotes: isUpvote ? supabase.rpc('increment', { row_count: 1 }) : supabase.rpc('decrement', { row_count: 1 }),
-              downvotes: isUpvote ? supabase.rpc('decrement', { row_count: 1 }) : supabase.rpc('increment', { row_count: 1 })
-            })
-            .eq('id', post.id);
+          delta = isUpvote ? 2 : -2;
+          setUserVote(isUpvote ? 'upvote' : 'downvote');
         }
       } else {
-        // If no existing vote, insert new vote
+        // New vote
         await supabase
           .from('votes')
           .insert({
-            user_id: user.id,
             post_id: post.id,
+            user_id: user.id,
             is_upvote: isUpvote
           });
         
-        // Update post vote count in database
-        await supabase
-          .from('posts')
-          .update({
-            upvotes: isUpvote ? supabase.rpc('increment', { row_count: 1 }) : undefined,
-            downvotes: !isUpvote ? supabase.rpc('increment', { row_count: 1 }) : undefined
-          })
-          .eq('id', post.id);
+        delta = isUpvote ? 1 : -1;
+        setUserVote(isUpvote ? 'upvote' : 'downvote');
+      }
+      
+      setVoteScore(prev => prev + delta);
+      
+      // Update the post's vote counts in the database
+      if (onVote) {
+        onVote(post.id, isUpvote);
       }
     } catch (error: any) {
       console.error('Error voting:', error);
-      
-      // Revert UI changes on error
-      setVoteStatus(oldVoteStatus);
-      setVoteCount(post.votes);
-      
       toast({
         title: 'Error',
-        description: error.message || 'Failed to register vote',
+        description: 'Failed to register your vote',
         variant: 'destructive',
       });
+    } finally {
+      setIsLoading(false);
     }
   };
-  
+
   const handleBookmark = async () => {
     if (!user) {
       toast({
         title: 'Authentication required',
         description: 'Please sign in to bookmark posts',
-        variant: 'default',
       });
+      navigate('/login');
       return;
     }
     
-    const wasBookmarked = isBookmarked;
-    
-    // Update UI optimistically
-    setIsBookmarked(!wasBookmarked);
-    
     try {
-      if (wasBookmarked) {
+      setIsLoading(true);
+      
+      if (bookmarked) {
         // Remove bookmark
         await supabase
           .from('bookmarks')
           .delete()
-          .eq('user_id', user.id)
-          .eq('post_id', post.id);
+          .eq('post_id', post.id)
+          .eq('user_id', user.id);
+        
+        setBookmarked(false);
+        toast({
+          title: 'Bookmark removed',
+          description: 'Post removed from your bookmarks',
+        });
       } else {
         // Add bookmark
         await supabase
           .from('bookmarks')
           .insert({
-            user_id: user.id,
-            post_id: post.id
+            post_id: post.id,
+            user_id: user.id
           });
+        
+        setBookmarked(true);
+        toast({
+          title: 'Bookmark added',
+          description: 'Post saved to your bookmarks',
+        });
       }
     } catch (error: any) {
       console.error('Error bookmarking:', error);
-      
-      // Revert UI changes on error
-      setIsBookmarked(wasBookmarked);
-      
       toast({
         title: 'Error',
-        description: error.message || 'Failed to update bookmark',
+        description: 'Failed to update bookmark',
         variant: 'destructive',
       });
+    } finally {
+      setIsLoading(false);
     }
   };
   
   const handleShare = () => {
-    const url = `${window.location.origin}/post/${post.id}`;
-    navigator.clipboard.writeText(url);
-    
+    navigator.clipboard.writeText(`${window.location.origin}/post/${post.id}`);
     toast({
       title: 'Link copied',
-      description: 'Post link has been copied to clipboard',
+      description: 'Post link copied to clipboard',
     });
   };
-  
-  const truncateContent = (content: string, maxLength: number = 250) => {
+
+  const truncateContent = (content: string, maxLength: number) => {
     if (content.length <= maxLength) return content;
     return content.substring(0, maxLength) + '...';
   };
 
   return (
-    <Card className="mb-4">
+    <Card className="mb-4 hover:border-primary/50 transition-colors">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Link to={`/r/${post.squad}`} className="text-sm font-medium hover:underline">
-              r/{post.squad}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            {post.squads && (
+              <>
+                <Link to={`/r/${post.squads.name}`} className="font-medium text-foreground hover:underline">
+                  r/{post.squads.name}
+                </Link>
+                <span>•</span>
+              </>
+            )}
+            <span>Posted by</span>
+            <Link to={`/u/${post.profiles.username}`} className="hover:underline">
+              u/{post.profiles.username}
             </Link>
-            <span className="text-muted-foreground">•</span>
-            <div className="flex items-center gap-1">
-              <span className="text-sm text-muted-foreground">Posted by</span>
-              <Link to={`/u/${post.author}`} className="text-sm hover:underline flex items-center gap-1">
-                <Avatar className="h-4 w-4">
-                  <AvatarImage src={authorAvatar || ''} />
-                  <AvatarFallback className="text-[8px]">
-                    {post.author.substring(0, 2).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <span>u/{post.author}</span>
-              </Link>
-            </div>
-            <span className="text-muted-foreground">•</span>
-            <span className="text-sm text-muted-foreground">{post.timestamp}</span>
+            <span>•</span>
+            <span>{formatDistanceToNow(new Date(post.created_at))} ago</span>
           </div>
         </div>
-        <Link to={`/post/${post.id}`} className="hover:underline mt-2 block">
-          <h3 className="text-lg font-semibold">{post.title}</h3>
-        </Link>
       </CardHeader>
       
-      <CardContent>
-        <Link to={`/post/${post.id}`} className="no-underline text-foreground">
-          <div className="prose prose-sm dark:prose-invert max-w-none line-clamp-3">
-            {truncateContent(post.content)}
-          </div>
+      <CardContent className="pb-3">
+        <Link to={`/post/${post.id}`} className="no-underline">
+          <h3 className="text-lg font-semibold mb-2 hover:text-primary transition-colors">
+            {post.title}
+          </h3>
           
-          {post.image && (
-            <div className="mt-3 max-h-80 overflow-hidden rounded-md">
-              <img 
-                src={post.image} 
-                alt={post.title} 
-                className="w-full object-contain bg-black/5 dark:bg-white/5" 
-              />
-            </div>
-          )}
-          
-          {post.tags && post.tags.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-3">
-              {post.tags.map((tag) => (
-                <span 
-                  key={tag} 
-                  className="bg-secondary text-secondary-foreground text-xs px-2 py-1 rounded-full"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
+          {!compact && (
+            <>
+              <div className="prose dark:prose-invert max-w-none text-sm">
+                <p className="line-clamp-3">{truncateContent(post.content, 250)}</p>
+              </div>
+              
+              {post.image && (
+                <div className="mt-3 max-h-[300px] overflow-hidden rounded-md">
+                  <img src={post.image} alt={post.title} className="w-full object-cover" />
+                </div>
+              )}
+            </>
           )}
         </Link>
       </CardContent>
       
-      <CardFooter className="flex flex-wrap gap-2 pt-0">
-        <TooltipProvider>
-          <div className="flex items-center space-x-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className={`px-2 ${voteStatus === 'upvote' ? 'bg-primary/10 text-primary' : ''}`}
-                  onClick={() => handleVote(true)}
-                >
-                  <ArrowUpIcon className="h-5 w-5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Upvote</TooltipContent>
-            </Tooltip>
+      {!hideActions && (
+        <CardFooter className="pt-0 pb-2 flex justify-between">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex items-center border rounded-full pr-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className={`h-8 px-2 rounded-l-full ${userVote === 'upvote' ? 'text-primary' : ''}`}
+                onClick={() => handleVote(true)}
+                disabled={isLoading}
+              >
+                <ArrowUp className="h-4 w-4" />
+              </Button>
+              
+              <span className="text-sm font-medium mx-1">{voteScore}</span>
+              
+              <Button
+                variant="ghost"
+                size="sm"
+                className={`h-8 px-2 rounded-r-full ${userVote === 'downvote' ? 'text-primary' : ''}`}
+                onClick={() => handleVote(false)}
+                disabled={isLoading}
+              >
+                <ArrowDown className="h-4 w-4" />
+              </Button>
+            </div>
             
-            <span className="min-w-8 text-center font-medium">
-              {voteCount}
-            </span>
+            <Link to={`/post/${post.id}`} className="flex items-center gap-1 hover:text-primary no-underline">
+              <MessageSquare className="h-4 w-4" />
+              <span>{post.commentcount || 0}</span>
+            </Link>
             
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className={`px-2 ${voteStatus === 'downvote' ? 'bg-primary/10 text-primary' : ''}`}
-                  onClick={() => handleVote(false)}
-                >
-                  <ArrowDownIcon className="h-5 w-5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Downvote</TooltipContent>
-            </Tooltip>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 flex items-center gap-1"
+              onClick={handleShare}
+            >
+              <Share2 className="h-4 w-4" />
+            </Button>
+            
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`h-8 px-2 flex items-center gap-1 ${bookmarked ? 'text-primary' : ''}`}
+              onClick={handleBookmark}
+              disabled={isLoading}
+            >
+              {bookmarked ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
+            </Button>
+            
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 flex items-center gap-1"
+              onClick={() => {
+                if (!user) {
+                  toast({
+                    title: 'Authentication required',
+                    description: 'Please sign in to report content',
+                  });
+                  navigate('/login');
+                  return;
+                }
+                
+                toast({
+                  title: 'Report submitted',
+                  description: 'Thank you for helping keep NexaSnap safe',
+                });
+              }}
+            >
+              <Flag className="h-4 w-4" />
+            </Button>
           </div>
-          
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="flex items-center gap-2"
-                asChild
-              >
-                <Link to={`/post/${post.id}`}>
-                  <MessageSquare className="h-4 w-4" />
-                  <span>{post.commentCount} comments</span>
-                </Link>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Comments</TooltipContent>
-          </Tooltip>
-          
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className={`flex items-center gap-2 ${isBookmarked ? 'bg-primary/10 text-primary' : ''}`}
-                onClick={handleBookmark}
-              >
-                <Bookmark className={`h-4 w-4 ${isBookmarked ? 'fill-current' : ''}`} />
-                <span>{isBookmarked ? 'Saved' : 'Save'}</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">{isBookmarked ? 'Unsave' : 'Save'}</TooltipContent>
-          </Tooltip>
-          
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="flex items-center gap-2"
-                onClick={handleShare}
-              >
-                <Share className="h-4 w-4" />
-                <span>Share</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Copy link</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </CardFooter>
+        </CardFooter>
+      )}
     </Card>
   );
-}
+};
+
+export default PostCard;

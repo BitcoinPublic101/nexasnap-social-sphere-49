@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { NavBar } from '@/components/ui/NavBar';
@@ -17,7 +16,7 @@ import { useAuth } from '@/context/AuthContext';
 import { 
   Loader2, Users, FileText, Flag, Ban, ShieldAlert, LineChart, 
   Search, Filter, ChevronDown, MoreHorizontal, CheckCircle, XCircle, 
-  Edit, Trash, Eye, UserX, BarChart3, TrendingUp
+  Edit, Trash, Eye, UserX, BarChart3, TrendingUp, Bot
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -360,6 +359,21 @@ const AdminDashboard = () => {
                 </div>
                 <div className="bg-primary/10 p-3 rounded-full">
                   <Flag className="h-6 w-6 text-primary" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">AI Bots</p>
+                  <h3 className="text-2xl font-bold">4 Active</h3>
+                  <p className="text-xs text-green-500 mt-1">All systems operational</p>
+                </div>
+                <div className="bg-primary/10 p-3 rounded-full">
+                  <Bot className="h-6 w-6 text-primary" />
                 </div>
               </div>
             </CardContent>

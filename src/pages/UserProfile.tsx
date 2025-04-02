@@ -1,105 +1,150 @@
 
-import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import { NavBar } from '@/components/ui/NavBar';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { PostCard } from '@/components/PostCard';
-import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
-import { Loader2, Edit, UserPlus, UserMinus, Mail } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { formatDistanceToNow } from 'date-fns';
+import { Calendar, Users, MapPin, Link as LinkIcon, User, UserCheck } from 'lucide-react';
+import PostCard from '@/components/PostCard';
+import { TrendingSideBar } from '@/components/TrendingSideBar';
 
 const UserProfile = () => {
-  const { username } = useParams<{ username: string }>();
-  const [profile, setProfile] = useState<any | null>(null);
-  const [posts, setPosts] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isFollowing, setIsFollowing] = useState(false);
+  const { username } = useParams();
   const { user } = useAuth();
   const { toast } = useToast();
-
+  const [profile, setProfile] = useState<any>(null);
+  const [posts, setPosts] = useState<any[]>([]);
+  const [comments, setComments] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followerCount, setFollowerCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+  
   useEffect(() => {
-    const fetchProfile = async () => {
+    const fetchProfileData = async () => {
       setIsLoading(true);
       try {
-        // Fetch profile by username
+        // Get profile info
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
           .select('*')
           .eq('username', username)
           .single();
-
+        
         if (profileError) throw profileError;
-        if (!profileData) throw new Error('Profile not found');
-
         setProfile(profileData);
-
-        // Fetch user's posts
+        
+        // Get posts by this user
         const { data: postsData, error: postsError } = await supabase
           .from('posts')
           .select(`
             *,
-            squads:squad_id(name),
-            profiles:author_id(username)
+            profiles:author_id(username, avatar_url),
+            squads:squad_id(name)
           `)
           .eq('author_id', profileData.id)
-          .order('created_at', { ascending: false });
+          .eq('is_hidden', false)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        
+        if (!postsError) {
+          setPosts(postsData || []);
+        }
+        
+        // Get comments by this user
+        const { data: commentsData, error: commentsError } = await supabase
+          .from('comments')
+          .select(`
+            *,
+            posts:post_id(title, id)
+          `)
+          .eq('author_id', profileData.id)
+          .eq('is_hidden', false)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        
+        if (!commentsError) {
+          setComments(commentsData || []);
+        }
+        
+        // Get follower count (people following this user)
+        const { count: followersCount, error: followersError } = await supabase
+          .rpc('count_followers', { user_id: profileData.id });
 
-        if (postsError) throw postsError;
-        setPosts(postsData || []);
-
-        // Check if current user is following this profile
+        if (!followersError && followersCount !== null) {
+          setFollowerCount(followersCount);
+        }
+        
+        // Get following count (people this user follows)
+        const { count: followingCountData, error: followingError } = await supabase
+          .rpc('count_following', { user_id: profileData.id });
+        
+        if (!followingError && followingCountData !== null) {
+          setFollowingCount(followingCountData);
+        }
+        
+        // Check if logged-in user is following this profile
         if (user) {
           const { data: followData } = await supabase
-            .from('follows')
-            .select('*')
-            .eq('follower_id', user.id)
-            .eq('followed_id', profileData.id)
-            .maybeSingle();
+            .rpc('check_is_following', { 
+              follower_user_id: user.id, 
+              followed_user_id: profileData.id 
+            });
           
           setIsFollowing(!!followData);
         }
       } catch (error: any) {
-        console.error('Error fetching profile:', error);
+        console.error('Error fetching profile data:', error);
         toast({
           title: 'Error',
-          description: error.message || 'Failed to load profile',
+          description: error.message || 'Failed to load profile data',
           variant: 'destructive',
         });
       } finally {
         setIsLoading(false);
       }
     };
-
+    
     if (username) {
-      fetchProfile();
+      fetchProfileData();
     }
   }, [username, user, toast]);
-
-  const handleFollow = async () => {
+  
+  const handleFollowToggle = async () => {
     if (!user) {
       toast({
         title: 'Authentication required',
         description: 'Please sign in to follow users',
-        variant: 'default',
       });
       return;
     }
-
+    
+    if (user.id === profile?.id) {
+      toast({
+        title: 'Cannot follow yourself',
+        description: 'You cannot follow your own profile',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
     try {
       if (isFollowing) {
         // Unfollow
         await supabase
-          .from('follows')
-          .delete()
-          .eq('follower_id', user.id)
-          .eq('followed_id', profile.id);
+          .rpc('unfollow_user', { 
+            follower_user_id: user.id, 
+            followed_user_id: profile.id 
+          });
         
         setIsFollowing(false);
+        setFollowerCount(prev => Math.max(0, prev - 1));
         toast({
           title: 'Unfollowed',
           description: `You are no longer following ${profile.username}`,
@@ -107,19 +152,20 @@ const UserProfile = () => {
       } else {
         // Follow
         await supabase
-          .from('follows')
-          .insert({
-            follower_id: user.id,
-            followed_id: profile.id
+          .rpc('follow_user', { 
+            follower_user_id: user.id, 
+            followed_user_id: profile.id 
           });
         
         setIsFollowing(true);
+        setFollowerCount(prev => prev + 1);
         toast({
-          title: 'Success',
+          title: 'Following',
           description: `You are now following ${profile.username}`,
         });
       }
     } catch (error: any) {
+      console.error('Error toggling follow:', error);
       toast({
         title: 'Error',
         description: error.message || 'Failed to update follow status',
@@ -127,185 +173,248 @@ const UserProfile = () => {
       });
     }
   };
-
+  
   if (isLoading) {
     return (
-      <div className="min-h-screen">
+      <div className="min-h-screen flex flex-col">
         <NavBar />
-        <div className="container py-8 flex items-center justify-center min-h-[50vh]">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="flex justify-center items-center flex-1 p-6">
+          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
         </div>
       </div>
     );
   }
-
+  
   if (!profile) {
     return (
-      <div className="min-h-screen">
+      <div className="min-h-screen flex flex-col">
         <NavBar />
-        <div className="container py-8">
-          <Card>
-            <CardContent className="py-10">
-              <div className="text-center">
-                <h2 className="text-2xl font-bold">User not found</h2>
-                <p className="text-muted-foreground mt-2">
-                  The user you're looking for doesn't exist or has been removed.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+        <div className="flex justify-center items-center flex-1 p-6">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold mb-2">User Not Found</h1>
+            <p className="text-muted-foreground mb-6">
+              The user you're looking for doesn't exist or has been removed.
+            </p>
+            <Button onClick={() => window.history.back()}>
+              Go Back
+            </Button>
+          </div>
         </div>
       </div>
     );
   }
-
+  
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen flex flex-col">
       <NavBar />
-      <div className="container py-6">
-        <div className="bg-card rounded-lg overflow-hidden shadow-md">
-          {/* Cover image/banner */}
-          <div className="h-32 md:h-40 bg-gradient-to-r from-primary/20 to-primary/5" />
-          
-          {/* Profile info section */}
-          <div className="px-4 md:px-6 pb-6 relative">
-            <div className="flex flex-col md:flex-row gap-4 items-start md:items-end">
-              <Avatar className="-mt-12 border-4 border-background w-24 h-24 md:w-32 md:h-32">
-                <AvatarImage src={profile.avatar_url} />
-                <AvatarFallback className="text-2xl">
-                  {profile.username?.substring(0, 2)?.toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              
-              <div className="flex-1 pt-2">
-                <h1 className="text-2xl md:text-3xl font-bold">{profile.full_name || profile.username}</h1>
-                <p className="text-muted-foreground">@{profile.username}</p>
-              </div>
-              
-              <div className="flex gap-2 mt-4 md:mt-0">
-                {user && user.id === profile.id ? (
-                  <Button variant="outline" size="sm" className="flex items-center gap-2" asChild>
-                    <a href="/settings">
-                      <Edit className="w-4 h-4" />
-                      <span>Edit Profile</span>
-                    </a>
-                  </Button>
-                ) : (
-                  <>
-                    <Button 
-                      variant={isFollowing ? "outline" : "default"}
-                      size="sm"
-                      onClick={handleFollow}
-                      className="flex items-center gap-2"
-                    >
-                      {isFollowing ? (
-                        <>
-                          <UserMinus className="w-4 h-4" />
-                          <span>Unfollow</span>
-                        </>
-                      ) : (
-                        <>
-                          <UserPlus className="w-4 h-4" />
-                          <span>Follow</span>
-                        </>
-                      )}
-                    </Button>
+      
+      <div className="flex flex-1">
+        {/* Main Content */}
+        <main className="flex-1 px-4 py-6">
+          <div className="max-w-4xl mx-auto">
+            {/* Profile Header */}
+            <Card className="mb-6">
+              <CardContent className="pt-6">
+                <div className="flex flex-col md:flex-row gap-6">
+                  <div className="flex flex-col items-center md:items-start">
+                    <Avatar className="h-24 w-24 mb-4">
+                      <AvatarImage src={profile.avatar_url} />
+                      <AvatarFallback>
+                        {profile.username?.substring(0, 2)?.toUpperCase() || '??'}
+                      </AvatarFallback>
+                    </Avatar>
                     
-                    <Button variant="outline" size="sm" className="flex items-center gap-2">
-                      <Mail className="w-4 h-4" />
-                      <span>Message</span>
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
-            
-            {profile.bio && (
-              <div className="mt-4">
-                <p>{profile.bio}</p>
-              </div>
-            )}
-            
-            <div className="flex gap-6 mt-4">
-              <div className="text-sm">
-                <span className="font-bold">250</span> 
-                <span className="text-muted-foreground"> posts</span>
-              </div>
-              <div className="text-sm">
-                <span className="font-bold">12.4k</span> 
-                <span className="text-muted-foreground"> followers</span>
-              </div>
-              <div className="text-sm">
-                <span className="font-bold">142</span> 
-                <span className="text-muted-foreground"> following</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <div className="mt-6">
-          <Tabs defaultValue="posts">
-            <TabsList className="w-full border-b rounded-none justify-start">
-              <TabsTrigger value="posts" className="flex-1 md:flex-none">Posts</TabsTrigger>
-              <TabsTrigger value="comments" className="flex-1 md:flex-none">Comments</TabsTrigger>
-              <TabsTrigger value="saved" className="flex-1 md:flex-none">Saved</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="posts" className="space-y-4 mt-4">
-              {posts.length === 0 ? (
-                <Card>
-                  <CardContent className="py-10">
-                    <div className="text-center">
-                      <h3 className="text-lg font-medium">No posts yet</h3>
-                      <p className="text-muted-foreground mt-2">
-                        This user hasn't posted anything yet.
-                      </p>
+                    {user && user.id !== profile.id && (
+                      <Button 
+                        variant={isFollowing ? "outline" : "default"}
+                        className="mb-2 w-full"
+                        onClick={handleFollowToggle}
+                      >
+                        {isFollowing ? (
+                          <>
+                            <UserCheck className="mr-2 h-4 w-4" />
+                            Following
+                          </>
+                        ) : (
+                          <>
+                            <User className="mr-2 h-4 w-4" />
+                            Follow
+                          </>
+                        )}
+                      </Button>
+                    )}
+                    
+                    {user && user.id === profile.id && (
+                      <Button variant="outline" className="mb-2 w-full" asChild>
+                        <Link to="/settings">Edit Profile</Link>
+                      </Button>
+                    )}
+                  </div>
+                  
+                  <div className="flex-1">
+                    <h1 className="text-2xl font-bold mb-1">{profile.username}</h1>
+                    
+                    {profile.full_name && (
+                      <h2 className="text-lg text-muted-foreground mb-4">{profile.full_name}</h2>
+                    )}
+                    
+                    {profile.bio && (
+                      <p className="mb-4 whitespace-pre-line">{profile.bio}</p>
+                    )}
+                    
+                    <div className="flex flex-wrap gap-4 text-sm text-muted-foreground mb-4">
+                      <div className="flex items-center gap-1">
+                        <Calendar className="h-4 w-4" />
+                        <span>Joined {new Date(profile.created_at).toLocaleDateString()}</span>
+                      </div>
+                      
+                      <div className="flex items-center gap-1">
+                        <Users className="h-4 w-4" />
+                        <span>{followerCount} followers</span>
+                      </div>
+                      
+                      <div className="flex items-center gap-1">
+                        <User className="h-4 w-4" />
+                        <span>Following {followingCount}</span>
+                      </div>
+                      
+                      {profile.website && (
+                        <div className="flex items-center gap-1">
+                          <LinkIcon className="h-4 w-4" />
+                          <a href={profile.website} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                            {new URL(profile.website).hostname}
+                          </a>
+                        </div>
+                      )}
                     </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            
+            {/* Profile Tabs */}
+            <Tabs defaultValue="posts">
+              <TabsList className="w-full mb-6">
+                <TabsTrigger value="posts" className="flex-1">Posts</TabsTrigger>
+                <TabsTrigger value="comments" className="flex-1">Comments</TabsTrigger>
+                <TabsTrigger value="about" className="flex-1">About</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="posts">
+                {posts.length === 0 ? (
+                  <Card>
+                    <CardContent className="py-8 text-center">
+                      <h3 className="text-lg font-medium mb-2">No posts yet</h3>
+                      <p className="text-muted-foreground mb-4">
+                        {user && user.id === profile.id 
+                          ? "You haven't created any posts yet."
+                          : `${profile.username} hasn't created any posts yet.`}
+                      </p>
+                      {user && user.id === profile.id && (
+                        <Button asChild>
+                          <Link to="/">Create a Post</Link>
+                        </Button>
+                      )}
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div>
+                    {posts.map(post => (
+                      <PostCard key={post.id} post={post} />
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+              
+              <TabsContent value="comments">
+                {comments.length === 0 ? (
+                  <Card>
+                    <CardContent className="py-8 text-center">
+                      <h3 className="text-lg font-medium mb-2">No comments yet</h3>
+                      <p className="text-muted-foreground">
+                        {user && user.id === profile.id 
+                          ? "You haven't made any comments yet."
+                          : `${profile.username} hasn't made any comments yet.`}
+                      </p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="space-y-4">
+                    {comments.map(comment => (
+                      <Card key={comment.id}>
+                        <CardHeader className="pb-2">
+                          <div className="text-sm text-muted-foreground">
+                            <span>Comment on </span>
+                            <Link to={`/post/${comment.post_id}`} className="font-medium text-foreground hover:underline">
+                              {comment.posts?.title || 'Deleted Post'}
+                            </Link>
+                            <span> • {formatDistanceToNow(new Date(comment.created_at))} ago</span>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="whitespace-pre-line">{comment.content}</p>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+              
+              <TabsContent value="about">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>About {profile.username}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <h3 className="text-sm font-medium mb-1">Username</h3>
+                      <p>{profile.username}</p>
+                    </div>
+                    
+                    {profile.full_name && (
+                      <div>
+                        <h3 className="text-sm font-medium mb-1">Full Name</h3>
+                        <p>{profile.full_name}</p>
+                      </div>
+                    )}
+                    
+                    <div>
+                      <h3 className="text-sm font-medium mb-1">Account Created</h3>
+                      <p>{new Date(profile.created_at).toLocaleDateString()}</p>
+                    </div>
+                    
+                    {profile.bio && (
+                      <div>
+                        <h3 className="text-sm font-medium mb-1">Bio</h3>
+                        <p className="whitespace-pre-line">{profile.bio}</p>
+                      </div>
+                    )}
+                    
+                    {profile.website && (
+                      <div>
+                        <h3 className="text-sm font-medium mb-1">Website</h3>
+                        <a 
+                          href={profile.website} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline"
+                        >
+                          {profile.website}
+                        </a>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
-              ) : (
-                posts.map((post) => (
-                  <PostCard key={post.id} post={{
-                    id: post.id,
-                    title: post.title,
-                    content: post.content,
-                    timestamp: new Date(post.created_at).toLocaleString(),
-                    votes: post.upvotes - post.downvotes,
-                    commentCount: post.commentcount,
-                    squad: post.squads?.name || "Unknown",
-                    author: post.profiles?.username || "Unknown",
-                    image: post.image,
-                  }} />
-                ))
-              )}
-            </TabsContent>
-            
-            <TabsContent value="comments" className="mt-4">
-              <Card>
-                <CardContent className="py-10">
-                  <div className="text-center">
-                    <h3 className="text-lg font-medium">Comments</h3>
-                    <p className="text-muted-foreground mt-2">
-                      This feature is coming soon.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-            
-            <TabsContent value="saved" className="mt-4">
-              <Card>
-                <CardContent className="py-10">
-                  <div className="text-center">
-                    <h3 className="text-lg font-medium">Saved Posts</h3>
-                    <p className="text-muted-foreground mt-2">
-                      This feature is coming soon.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
+              </TabsContent>
+            </Tabs>
+          </div>
+        </main>
+        
+        {/* Right Sidebar - Hidden on mobile */}
+        <div className="hidden lg:block w-80 shrink-0 px-4 py-6">
+          <div className="sticky top-20">
+            <TrendingSideBar />
+          </div>
         </div>
       </div>
     </div>
