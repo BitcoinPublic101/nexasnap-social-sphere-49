@@ -1,7 +1,7 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
+import { PostWithAuthor } from '@/types/supabase-custom';
 
 type FeedSortOption = 'trending' | 'new' | 'top' | 'personalized';
 
@@ -19,7 +19,7 @@ export function useFeedAlgorithm({
   squadId, 
   limit = 20 
 }: UseFeedAlgorithmProps = {}) {
-  const [posts, setPosts] = useState<any[]>([]);
+  const [posts, setPosts] = useState<PostWithAuthor[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sortOption, setSortOption] = useState<FeedSortOption>(initialSort);
@@ -27,7 +27,6 @@ export function useFeedAlgorithm({
   const [page, setPage] = useState(1);
   const { user } = useAuth();
 
-  // Refetch posts when sort option, squad filter or page changes
   useEffect(() => {
     const fetchPosts = async () => {
       setLoading(true);
@@ -130,19 +129,14 @@ export function useFeedAlgorithm({
     fetchPosts();
   }, [sortOption, squadId, user, page, limit]);
   
-  // Function to load more posts
-  const loadMore = () => {
-    if (!loading && hasMore) {
-      setPage(prevPage => prevPage + 1);
-    }
-  };
-  
-  // Function to change the sort option
-  const changeSort = (newSort: FeedSortOption) => {
-    if (newSort !== sortOption) {
-      setSortOption(newSort);
-      setPage(1); // Reset to first page when changing sort
-    }
+  // Function to calculate a combined rank score for posts
+  const rankPosts = (postsToRank: PostWithAuthor[]) => {
+    return [...postsToRank].sort((a, b) => {
+      // Simple algorithm that combines upvotes, recency, and comment count
+      const scoreA = (a.upvotes || 0) + (a.commentcount || 0);
+      const scoreB = (b.upvotes || 0) + (b.commentcount || 0);
+      return scoreB - scoreA;
+    });
   };
   
   return { 
@@ -150,8 +144,18 @@ export function useFeedAlgorithm({
     loading, 
     error, 
     sortOption, 
-    changeSort, 
+    changeSort: (newSort: FeedSortOption) => {
+      if (newSort !== sortOption) {
+        setSortOption(newSort);
+        setPage(1); // Reset to first page when changing sort
+      }
+    }, 
     hasMore, 
-    loadMore 
+    loadMore: () => {
+      if (!loading && hasMore) {
+        setPage(prevPage => prevPage + 1);
+      }
+    },
+    rankPosts
   };
 }

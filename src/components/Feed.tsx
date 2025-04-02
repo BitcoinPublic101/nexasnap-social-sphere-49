@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import PostCard from '@/components/PostCard';
@@ -8,13 +9,14 @@ import { Separator } from '@/components/ui/separator';
 import { useFeedAlgorithm } from '@/hooks/useFeedAlgorithm';
 import { Skeleton } from '@/components/ui/skeleton';
 import CreatePostCard from '@/components/CreatePostCard';
+import { PostWithAuthor } from '@/types/supabase-custom';
 
 interface FeedProps {
   initialTab?: string;
 }
 
 const Feed = () => {
-  const [posts, setPosts] = useState<any[]>([]);
+  const [posts, setPosts] = useState<PostWithAuthor[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<string>('for-you');
   const [page, setPage] = useState<number>(1);
@@ -107,7 +109,7 @@ const Feed = () => {
   };
 
   // Function to transform posts to ensure they have the correct shape
-  const transformPosts = (rawPosts: any[]) => {
+  const transformPosts = (rawPosts: any[]): PostWithAuthor[] => {
     return rawPosts.map(post => ({
       id: post.id,
       title: post.title,
@@ -121,7 +123,14 @@ const Feed = () => {
       squad_id: post.squad_id,
       is_boosted: post.is_boosted,
       profiles: post.profiles || { username: 'Unknown', avatar_url: null },
-      squads: post.squads
+      squads: post.squads,
+      // Add any other properties needed from the PostWithAuthor type
+      updated_at: post.updated_at,
+      is_announcement: post.is_announcement,
+      is_flagged: post.is_flagged,
+      is_hidden: post.is_hidden,
+      report_count: post.report_count,
+      view_count: post.view_count
     }));
   };
 
