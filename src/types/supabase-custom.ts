@@ -11,7 +11,7 @@ export type Notification = Database['public']['Tables']['notifications']['Row'];
 export type SquadMember = Database['public']['Tables']['squad_members']['Row'];
 export type SystemBot = Database['public']['Tables']['system_bots']['Row'];
 
-// For select queries that use the x:rel(y) format
+// For select queries that join related data
 export interface PostAuthor {
   username: string;
   avatar_url?: string;
@@ -39,4 +39,10 @@ export interface SquadWithModerator extends Squad {
 export interface ApiResponse<T> {
   data: T | null;
   error: string | null;
+}
+
+// Fix BotManagement.tsx type issues by extending SystemBot
+export interface ExtendedSystemBot extends SystemBot {
+  personality?: string; // Add this optional field for compatibility
+  avatar_url?: string; // Add this optional field for compatibility
 }

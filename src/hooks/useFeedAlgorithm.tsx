@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import { PostWithAuthor } from '@/types/supabase-custom';
@@ -30,112 +30,106 @@ export function useFeedAlgorithm({
   const { user } = useAuth();
   const { toast } = useToast();
 
-  useEffect(() => {
-    const fetchPosts = async () => {
-      setLoading(true);
-      try {
-        let query = supabase
-          .from('posts')
-          .select(`
-            *,
-            profiles:author_id(username, avatar_url),
-            squads:squad_id(name)
-          `)
-          .eq('is_hidden', false);
+  const fetchPosts = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Basic query structure
+      let query = supabase
+        .from('posts')
+        .select(`
+          *,
+          profiles(username, avatar_url),
+          squads(name)
+        `)
+        .eq('is_hidden', false);
+      
+      // Apply squad filter if specified
+      if (squadId) {
+        query = query.eq('squad_id', squadId);
+      }
+      
+      // Apply different sorting based on the selected option
+      switch (sortOption) {
+        case 'new':
+          query = query.order('created_at', { ascending: false });
+          break;
         
-        // Apply squad filter if specified
-        if (squadId) {
-          query = query.eq('squad_id', squadId);
-        }
+        case 'top':
+          // Sort by upvotes - downvotes (net score)
+          query = query.order('upvotes', { ascending: false });
+          break;
         
-        // Apply different sorting based on the selected option
-        switch (sortOption) {
-          case 'new':
-            query = query.order('created_at', { ascending: false });
-            break;
-          
-          case 'top':
-            // Sort by upvotes - downvotes (net score)
-            query = query.order('upvotes', { ascending: false });
-            break;
-          
-          case 'trending':
-            // Use a combination of recency and engagement
-            // This simulates a trending algorithm - in a real implementation
-            // you might have a more sophisticated scoring system
-            const threeDaysAgo = new Date();
-            threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+        case 'trending':
+          // Use a combination of recency and engagement
+          query = query.order('upvotes', { ascending: false })
+                       .order('commentcount', { ascending: false });
+          break;
+        
+        case 'personalized':
+          if (user) {
+            // Personalized feed based on user's preferences
+            // First, get squads the user is following
+            const { data: userSquads } = await supabase
+              .from('squad_members')
+              .select('squad_id')
+              .eq('user_id', user.id);
             
-            query = query
-              .gte('created_at', threeDaysAgo.toISOString())
-              .order('upvotes', { ascending: false })
-              .order('commentcount', { ascending: false });
-            break;
-          
-          case 'personalized':
-            if (user) {
-              // Personalized feed based on user's preferences
-              // First, get squads the user is following
-              const { data: userSquads } = await supabase
-                .from('squad_members')
-                .select('squad_id')
-                .eq('user_id', user.id);
+            if (userSquads && userSquads.length > 0) {
+              const squadIds = userSquads.map(s => s.squad_id);
               
-              if (userSquads && userSquads.length > 0) {
-                const squadIds = userSquads.map(s => s.squad_id);
-                
-                // Prioritize posts from squads the user follows, then recent trending posts
-                query = query
-                  .in('squad_id', squadIds)
-                  .order('created_at', { ascending: false });
-              } else {
-                // Fall back to trending if user doesn't follow any squads
-                query = query
-                  .order('upvotes', { ascending: false })
-                  .order('created_at', { ascending: false });
-              }
+              // Prioritize posts from squads the user follows, then recent trending posts
+              query = query
+                .in('squad_id', squadIds)
+                .order('created_at', { ascending: false });
             } else {
-              // Fall back to trending if not logged in
+              // Fall back to trending if user doesn't follow any squads
               query = query
                 .order('upvotes', { ascending: false })
                 .order('created_at', { ascending: false });
             }
-            break;
-        }
-        
-        // Apply pagination
-        const from = (page - 1) * limit;
-        const to = from + limit - 1;
-        
-        const { data, error: fetchError } = await query
-          .range(from, to);
-        
-        if (fetchError) throw fetchError;
-        
-        // Update posts - for page 1, replace all posts, otherwise append
-        if (page === 1) {
-          setPosts(data as unknown as PostWithAuthor[] || []);
-        } else {
-          setPosts(prevPosts => [...prevPosts, ...(data as unknown as PostWithAuthor[] || [])]);
-        }
-        
-        // Check if there are more posts to load
-        setHasMore((data || []).length === limit);
-      } catch (error: any) {
-        console.error('Error fetching posts:', error);
-        setError(error.message || 'Failed to load posts');
-        toast({
-          title: "Error fetching posts",
-          description: error.message || 'Failed to load posts',
-          variant: "destructive"
-        });
-      } finally {
-        setLoading(false);
+          } else {
+            // Fall back to trending if not logged in
+            query = query
+              .order('upvotes', { ascending: false })
+              .order('created_at', { ascending: false });
+          }
+          break;
       }
-    };
-    
-    fetchPosts();
+      
+      // Apply pagination
+      const from = (page - 1) * limit;
+      const to = from + limit - 1;
+      
+      const { data, error: fetchError } = await query
+        .range(from, to);
+      
+      if (fetchError) throw fetchError;
+      
+      // Update posts - for page 1, replace all posts, otherwise append
+      if (page === 1) {
+        setPosts(data as PostWithAuthor[] || []);
+      } else {
+        setPosts(prevPosts => [...prevPosts, ...(data as PostWithAuthor[] || [])]);
+      }
+      
+      // Check if there are more posts to load
+      setHasMore((data || []).length === limit);
+    } catch (error: any) {
+      console.error('Error fetching posts:', error);
+      setError(error.message || 'Failed to load posts');
+      toast({
+        title: "Error fetching posts",
+        description: error.message || 'Failed to load posts',
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
   }, [sortOption, squadId, user, page, limit, toast]);
+  
+  useEffect(() => {
+    fetchPosts();
+  }, [fetchPosts]);
   
   // Function to calculate a combined rank score for posts
   const rankPosts = (postsToRank: PostWithAuthor[]) => {
@@ -164,6 +158,11 @@ export function useFeedAlgorithm({
         setPage(prevPage => prevPage + 1);
       }
     },
-    rankPosts
+    rankPosts,
+    refreshFeed: () => {
+      setPage(1);
+      setPosts([]);
+      fetchPosts();
+    }
   };
 }
