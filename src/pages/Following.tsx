@@ -19,7 +19,7 @@ const Following = () => {
     loadMore,
     refreshFeed 
   } = useFeedAlgorithm({ 
-    initialSort: 'following',
+    initialSort: 'personalized',
     limit: 10 
   });
 

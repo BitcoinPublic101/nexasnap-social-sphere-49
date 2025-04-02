@@ -46,3 +46,6 @@ export interface ExtendedSystemBot extends SystemBot {
   personality?: string; // Add this optional field for compatibility
   avatar_url?: string; // Add this optional field for compatibility
 }
+
+// Custom type for feed sort options
+export type FeedSortOption = 'trending' | 'new' | 'top' | 'personalized' | 'following';

@@ -1,640 +1,555 @@
 
-// Update imports to use ExtendedSystemBot instead of SystemBot
-import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/context/AuthContext';
-import { useToast } from '@/hooks/use-toast';
-import { 
-  Card, 
-  CardContent, 
-  CardDescription, 
-  CardFooter, 
-  CardHeader, 
-  CardTitle 
-} from '@/components/ui/card';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from '@/components/ui/select';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogDescription, 
-  DialogFooter 
-} from '@/components/ui/dialog';
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from '@/components/ui/table';
-import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { 
-  Robot, 
-  Plus, 
-  Edit, 
-  Trash2, 
-  Power, 
-  Clock, 
-  RefreshCw 
-} from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Bot, Calendar, Edit, Info, Plus, Trash } from 'lucide-react';
 import { ExtendedSystemBot } from '@/types/supabase-custom';
-
-interface BotFormData {
-  name: string;
-  type: string;
-  description: string;
-  prompt_template: string;
-  schedule: string;
-  is_active: boolean;
-}
+import { useAuth } from '@/context/AuthContext';
+import { NavBar } from '@/components/ui/NavBar';
+import { useNavigate } from 'react-router-dom';
 
 const BotManagement = () => {
   const [bots, setBots] = useState<ExtendedSystemBot[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [selectedBot, setSelectedBot] = useState<ExtendedSystemBot | null>(null);
-  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
-  
-  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<BotFormData>();
-  
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // Default configuration for a new bot
+  const defaultBotConfig = {
+    name: '',
+    description: '',
+    type: 'content',
+    schedule: 'daily',
+    prompt_template: '',
+    is_active: true,
+    personality: 'helpful',
+    avatar_url: '',
+  };
+
+  const [editingBot, setEditingBot] = useState<ExtendedSystemBot | null>(null);
+  const [newBot, setNewBot] = useState<ExtendedSystemBot & { [key: string]: any }>(defaultBotConfig as any);
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
+
   useEffect(() => {
-    fetchBots();
-  }, []);
-  
+    // Check if current user is admin
+    const checkAdminStatus = async () => {
+      if (!user) {
+        navigate('/login');
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('is_admin')
+          .eq('id', user.id)
+          .single();
+
+        if (error) throw error;
+        
+        if (!data.is_admin) {
+          toast({
+            title: 'Access Denied',
+            description: 'You need administrator access for this page.',
+            variant: 'destructive',
+          });
+          navigate('/');
+          return;
+        }
+
+        setIsAdmin(true);
+        fetchBots();
+      } catch (error: any) {
+        console.error('Error checking admin status:', error);
+        toast({
+          title: 'Authentication Error',
+          description: error.message || 'Failed to verify your access privileges',
+          variant: 'destructive',
+        });
+        navigate('/');
+      }
+    };
+
+    checkAdminStatus();
+  }, [user, navigate, toast]);
+
   const fetchBots = async () => {
+    setLoading(true);
     try {
-      setIsLoading(true);
       const { data, error } = await supabase
         .from('system_bots')
         .select('*')
-        .order('created_at', { ascending: false });
-      
+        .order('name');
+
       if (error) throw error;
-      setBots(data as ExtendedSystemBot[] || []);
+
+      // Enhance the bots with default avatar and personality if they don't have it
+      const enhancedBots = data.map(bot => ({
+        ...bot,
+        personality: bot.personality || 'helpful',
+        avatar_url: bot.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${bot.name}`,
+      }));
+
+      setBots(enhancedBots);
     } catch (error: any) {
       console.error('Error fetching bots:', error);
       toast({
         title: 'Error',
-        description: 'Failed to load bots',
+        description: error.message || 'Failed to load bots',
         variant: 'destructive',
       });
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
-  
-  const onSubmitCreate = async (data: BotFormData) => {
-    if (!user) return;
+
+  const handleEditBot = (bot: ExtendedSystemBot) => {
+    setEditingBot(bot);
+    setIsCreatingNew(false);
+  };
+
+  const handleCreateNewBot = () => {
+    setEditingBot(null);
+    setIsCreatingNew(true);
+    setNewBot(defaultBotConfig as any);
+  };
+
+  const handleSaveBot = async () => {
+    const botToSave = isCreatingNew ? newBot : editingBot;
+    if (!botToSave) return;
     
     try {
-      setIsLoading(true);
-      const { error } = await supabase
-        .from('system_bots')
-        .insert({
-          name: data.name,
-          type: data.type,
-          description: data.description,
-          prompt_template: data.prompt_template,
-          schedule: data.schedule,
-          is_active: data.is_active,
-          created_by: user.id,
+      if (isCreatingNew) {
+        // Create new bot
+        const { data, error } = await supabase
+          .from('system_bots')
+          .insert({
+            name: botToSave.name,
+            description: botToSave.description,
+            type: botToSave.type,
+            schedule: botToSave.schedule,
+            prompt_template: botToSave.prompt_template,
+            is_active: botToSave.is_active,
+            created_by: user?.id,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        toast({
+          title: 'Bot Created',
+          description: `Successfully created bot: ${botToSave.name}`,
         });
-      
-      if (error) throw error;
-      
-      toast({
-        title: 'Success',
-        description: 'Bot created successfully',
-      });
-      
+      } else {
+        // Update existing bot
+        const { error } = await supabase
+          .from('system_bots')
+          .update({
+            name: botToSave.name,
+            description: botToSave.description,
+            type: botToSave.type,
+            schedule: botToSave.schedule,
+            prompt_template: botToSave.prompt_template,
+            is_active: botToSave.is_active,
+          })
+          .eq('id', botToSave.id);
+
+        if (error) throw error;
+
+        toast({
+          title: 'Bot Updated',
+          description: `Successfully updated bot: ${botToSave.name}`,
+        });
+      }
+
+      // Reset states and refresh bots
+      setEditingBot(null);
+      setIsCreatingNew(false);
       fetchBots();
-      setIsCreateDialogOpen(false);
-      reset();
     } catch (error: any) {
-      console.error('Error creating bot:', error);
+      console.error('Error saving bot:', error);
       toast({
         title: 'Error',
-        description: 'Failed to create bot',
+        description: error.message || 'Failed to save bot',
         variant: 'destructive',
       });
-    } finally {
-      setIsLoading(false);
     }
   };
-  
-  const onSubmitEdit = async (data: BotFormData) => {
-    if (!selectedBot) return;
-    
-    try {
-      setIsLoading(true);
-      const { error } = await supabase
-        .from('system_bots')
-        .update({
-          name: data.name,
-          type: data.type,
-          description: data.description,
-          prompt_template: data.prompt_template,
-          schedule: data.schedule,
-          is_active: data.is_active,
-        })
-        .eq('id', selectedBot.id);
-      
-      if (error) throw error;
-      
-      toast({
-        title: 'Success',
-        description: 'Bot updated successfully',
-      });
-      
-      fetchBots();
-      setIsEditDialogOpen(false);
-      setSelectedBot(null);
-    } catch (error: any) {
-      console.error('Error updating bot:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to update bot',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsLoading(false);
+
+  const handleDeleteBot = async (botId: number) => {
+    if (!confirm('Are you sure you want to delete this bot? This action cannot be undone.')) {
+      return;
     }
-  };
-  
-  const handleDelete = async (bot: ExtendedSystemBot) => {
-    if (!confirm(`Are you sure you want to delete ${bot.name}?`)) return;
-    
+
     try {
-      setIsLoading(true);
       const { error } = await supabase
         .from('system_bots')
         .delete()
-        .eq('id', bot.id);
-      
+        .eq('id', botId);
+
       if (error) throw error;
-      
+
       toast({
-        title: 'Success',
-        description: 'Bot deleted successfully',
+        title: 'Bot Deleted',
+        description: 'The bot has been removed from the system',
       });
-      
+
       fetchBots();
     } catch (error: any) {
       console.error('Error deleting bot:', error);
       toast({
         title: 'Error',
-        description: 'Failed to delete bot',
+        description: error.message || 'Failed to delete bot',
         variant: 'destructive',
       });
-    } finally {
-      setIsLoading(false);
     }
   };
-  
-  const handleToggleActive = async (bot: ExtendedSystemBot) => {
+
+  const handleToggleBot = async (botId: number, isActive: boolean) => {
     try {
-      setIsLoading(true);
       const { error } = await supabase
         .from('system_bots')
-        .update({
-          is_active: !bot.is_active,
-        })
-        .eq('id', bot.id);
-      
+        .update({ is_active: isActive })
+        .eq('id', botId);
+
       if (error) throw error;
-      
+
       toast({
-        title: 'Success',
-        description: `Bot ${bot.is_active ? 'deactivated' : 'activated'} successfully`,
+        title: isActive ? 'Bot Activated' : 'Bot Deactivated',
+        description: `Bot has been ${isActive ? 'activated' : 'deactivated'} successfully`,
       });
-      
-      fetchBots();
+
+      // Update local state
+      setBots(prevBots => 
+        prevBots.map(bot => 
+          bot.id === botId ? { ...bot, is_active: isActive } : bot
+        )
+      );
     } catch (error: any) {
       console.error('Error toggling bot status:', error);
       toast({
         title: 'Error',
-        description: 'Failed to update bot status',
+        description: error.message || 'Failed to update bot status',
         variant: 'destructive',
       });
-    } finally {
-      setIsLoading(false);
     }
   };
-  
-  const handleManualRun = async (bot: ExtendedSystemBot) => {
-    try {
-      setIsLoading(true);
-      // This would trigger a function to manually run the bot
-      // For now, just update the last_run timestamp
-      const { error } = await supabase
-        .from('system_bots')
-        .update({
-          last_run: new Date().toISOString(),
-        })
-        .eq('id', bot.id);
-      
-      if (error) throw error;
-      
-      toast({
-        title: 'Success',
-        description: 'Bot triggered to run manually',
-      });
-      
-      fetchBots();
-    } catch (error: any) {
-      console.error('Error running bot:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to run bot',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsLoading(false);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    
+    if (isCreatingNew) {
+      setNewBot(prev => ({ ...prev, [name]: value }));
+    } else if (editingBot) {
+      setEditingBot(prev => prev ? { ...prev, [name]: value } : null);
     }
   };
-  
-  const openEditDialog = (bot: ExtendedSystemBot) => {
-    setSelectedBot(bot);
-    setValue('name', bot.name);
-    setValue('type', bot.type);
-    setValue('description', bot.description || '');
-    setValue('prompt_template', bot.prompt_template || '');
-    setValue('schedule', bot.schedule);
-    setValue('is_active', bot.is_active);
-    setIsEditDialogOpen(true);
+
+  const handleSwitchChange = (checked: boolean) => {
+    if (isCreatingNew) {
+      setNewBot(prev => ({ ...prev, is_active: checked }));
+    } else if (editingBot) {
+      setEditingBot(prev => prev ? { ...prev, is_active: checked } : null);
+    }
   };
-  
-  return (
-    <div className="container mx-auto p-6">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-3xl font-bold">System Bots Management</h1>
-          <p className="text-muted-foreground">
-            Create and manage automated bots for your application
-          </p>
+
+  const handleSelectChange = (name: string, value: string) => {
+    if (isCreatingNew) {
+      setNewBot(prev => ({ ...prev, [name]: value }));
+    } else if (editingBot) {
+      setEditingBot(prev => prev ? { ...prev, [name]: value } : null);
+    }
+  };
+
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <NavBar />
+        <div className="flex-1 flex items-center justify-center">
+          <p>Checking access privileges...</p>
         </div>
-        <Button onClick={() => setIsCreateDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Create Bot
-        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col">
+      <NavBar />
+      <div className="flex-1 container py-8">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold">Bot Management</h1>
+          <Button onClick={handleCreateNewBot}>
+            <Plus className="mr-2 h-4 w-4" /> Create New Bot
+          </Button>
+        </div>
+        
+        <Tabs defaultValue="active" className="w-full">
+          <TabsList className="mb-4">
+            <TabsTrigger value="active">Active Bots</TabsTrigger>
+            <TabsTrigger value="inactive">Inactive Bots</TabsTrigger>
+            <TabsTrigger value="all">All Bots</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="active">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {bots.filter(bot => bot.is_active).map(bot => (
+                <BotCard 
+                  key={bot.id} 
+                  bot={bot} 
+                  onEdit={() => handleEditBot(bot)}
+                  onDelete={() => handleDeleteBot(bot.id)}
+                  onToggle={(isActive) => handleToggleBot(bot.id, isActive)}
+                />
+              ))}
+              {loading && <p>Loading active bots...</p>}
+              {!loading && bots.filter(bot => bot.is_active).length === 0 && (
+                <p className="text-muted-foreground col-span-full text-center py-8">No active bots found</p>
+              )}
+            </div>
+          </TabsContent>
+          
+          <TabsContent value="inactive">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {bots.filter(bot => !bot.is_active).map(bot => (
+                <BotCard 
+                  key={bot.id} 
+                  bot={bot} 
+                  onEdit={() => handleEditBot(bot)}
+                  onDelete={() => handleDeleteBot(bot.id)}
+                  onToggle={(isActive) => handleToggleBot(bot.id, isActive)}
+                />
+              ))}
+              {loading && <p>Loading inactive bots...</p>}
+              {!loading && bots.filter(bot => !bot.is_active).length === 0 && (
+                <p className="text-muted-foreground col-span-full text-center py-8">No inactive bots found</p>
+              )}
+            </div>
+          </TabsContent>
+          
+          <TabsContent value="all">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {bots.map(bot => (
+                <BotCard 
+                  key={bot.id} 
+                  bot={bot} 
+                  onEdit={() => handleEditBot(bot)}
+                  onDelete={() => handleDeleteBot(bot.id)}
+                  onToggle={(isActive) => handleToggleBot(bot.id, isActive)}
+                />
+              ))}
+              {loading && <p>Loading bots...</p>}
+              {!loading && bots.length === 0 && (
+                <p className="text-muted-foreground col-span-full text-center py-8">No bots found</p>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
+        
+        {(editingBot || isCreatingNew) && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <Card className="w-full max-w-2xl overflow-y-auto max-h-[90vh]">
+              <div className="p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-2xl font-bold">
+                    {isCreatingNew ? 'Create New Bot' : 'Edit Bot'}
+                  </h2>
+                  <Button 
+                    variant="ghost" 
+                    onClick={() => {
+                      setEditingBot(null);
+                      setIsCreatingNew(false);
+                    }}
+                  >
+                    ×
+                  </Button>
+                </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="name">Bot Name</Label>
+                    <Input 
+                      id="name" 
+                      name="name" 
+                      value={isCreatingNew ? newBot.name : editingBot?.name || ''} 
+                      onChange={handleInputChange}
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="description">Description</Label>
+                    <Textarea 
+                      id="description" 
+                      name="description" 
+                      value={isCreatingNew ? newBot.description : editingBot?.description || ''} 
+                      onChange={handleInputChange}
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="type">Bot Type</Label>
+                      <Select 
+                        value={isCreatingNew ? newBot.type : editingBot?.type || 'content'} 
+                        onValueChange={(value) => handleSelectChange('type', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="content">Content Generator</SelectItem>
+                          <SelectItem value="moderation">Content Moderation</SelectItem>
+                          <SelectItem value="assistant">AI Assistant</SelectItem>
+                          <SelectItem value="notification">Notification</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="schedule">Schedule</Label>
+                      <Select 
+                        value={isCreatingNew ? newBot.schedule : editingBot?.schedule || 'daily'} 
+                        onValueChange={(value) => handleSelectChange('schedule', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select schedule" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="hourly">Hourly</SelectItem>
+                          <SelectItem value="daily">Daily</SelectItem>
+                          <SelectItem value="weekly">Weekly</SelectItem>
+                          <SelectItem value="monthly">Monthly</SelectItem>
+                          <SelectItem value="on-demand">On Demand</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="prompt_template">Prompt Template</Label>
+                    <Textarea 
+                      id="prompt_template" 
+                      name="prompt_template" 
+                      value={isCreatingNew ? newBot.prompt_template : editingBot?.prompt_template || ''} 
+                      onChange={handleInputChange}
+                      className="h-36"
+                      placeholder="Write your prompt template here. Use variables like {{username}} that will be replaced when the bot runs."
+                    />
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="is_active"
+                      checked={isCreatingNew ? newBot.is_active : editingBot?.is_active || false}
+                      onCheckedChange={handleSwitchChange}
+                    />
+                    <Label htmlFor="is_active">Active</Label>
+                  </div>
+                  
+                  <div className="flex justify-end gap-2 pt-4">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => {
+                        setEditingBot(null);
+                        setIsCreatingNew(false);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button onClick={handleSaveBot}>
+                      {isCreatingNew ? 'Create Bot' : 'Save Changes'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+interface BotCardProps {
+  bot: ExtendedSystemBot;
+  onEdit: () => void;
+  onDelete: () => void;
+  onToggle: (isActive: boolean) => void;
+}
+
+const BotCard = ({ bot, onEdit, onDelete, onToggle }: BotCardProps) => {
+  return (
+    <Card className="overflow-hidden">
+      <div className={`p-4 ${bot.is_active ? 'bg-green-100 dark:bg-green-900/20' : 'bg-red-100 dark:bg-red-900/20'}`}>
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <Avatar>
+              <AvatarImage src={bot.avatar_url} alt={bot.name} />
+              <AvatarFallback>
+                <Bot size={24} />
+              </AvatarFallback>
+            </Avatar>
+            <div>
+              <h3 className="font-bold">{bot.name}</h3>
+              <p className="text-xs text-muted-foreground">{bot.type}</p>
+            </div>
+          </div>
+          <div className="flex items-center">
+            <Switch
+              checked={bot.is_active}
+              onCheckedChange={onToggle}
+              aria-label="Toggle bot active status"
+            />
+          </div>
+        </div>
       </div>
       
-      <Card>
-        <CardHeader>
-          <CardTitle>Active Bots</CardTitle>
-          <CardDescription>
-            Manage your system's automated bots
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-4">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="p-4 border rounded-md animate-pulse">
-                  <div className="h-5 bg-gray-200 rounded w-1/3 mb-2"></div>
-                  <div className="h-4 bg-gray-200 rounded w-2/3"></div>
-                </div>
-              ))}
-            </div>
-          ) : bots.length === 0 ? (
-            <div className="text-center py-8">
-              <Robot className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
-              <h3 className="text-lg font-medium">No Bots Created</h3>
-              <p className="text-muted-foreground">
-                Create your first bot to automate tasks
-              </p>
-              <Button 
-                variant="outline" 
-                className="mt-4"
-                onClick={() => setIsCreateDialogOpen(true)}
-              >
-                Create Bot
-              </Button>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Bot</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Schedule</TableHead>
-                  <TableHead>Last Run</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {bots.map((bot) => (
-                  <TableRow key={bot.id}>
-                    <TableCell>
-                      <div className="flex items-center space-x-3">
-                        <Avatar>
-                          <AvatarImage src={bot.avatar_url} alt={bot.name} />
-                          <AvatarFallback>
-                            {bot.name.substring(0, 2).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <div className="font-medium">{bot.name}</div>
-                          <div className="text-sm text-muted-foreground truncate max-w-[200px]">
-                            {bot.description}
-                          </div>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
-                        {bot.type}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center">
-                        <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
-                        {bot.schedule}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {bot.last_run ? (
-                        formatDistanceToNow(new Date(bot.last_run), { addSuffix: true })
-                      ) : (
-                        <span className="text-muted-foreground">Never</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        bot.is_active 
-                          ? 'bg-green-100 text-green-800 dark:bg-green-800/20 dark:text-green-400' 
-                          : 'bg-gray-100 text-gray-800 dark:bg-gray-800/20 dark:text-gray-400'
-                      }`}>
-                        {bot.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end space-x-2">
-                        <Button 
-                          variant="ghost" 
-                          size="icon"
-                          onClick={() => handleManualRun(bot)}
-                          title="Run Manually"
-                        >
-                          <RefreshCw className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="icon"
-                          onClick={() => handleToggleActive(bot)}
-                          title={bot.is_active ? 'Deactivate' : 'Activate'}
-                        >
-                          <Power className={`h-4 w-4 ${bot.is_active ? 'text-green-500' : ''}`} />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="icon"
-                          onClick={() => openEditDialog(bot)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="icon"
-                          onClick={() => handleDelete(bot)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-      
-      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>Create New Bot</DialogTitle>
-            <DialogDescription>
-              Create an automated bot to perform tasks on a schedule
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit(onSubmitCreate)}>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Bot Name</Label>
-                  <Input 
-                    id="name" 
-                    {...register('name', { required: 'Name is required' })}
-                    placeholder="Content Moderator"
-                  />
-                  {errors.name && (
-                    <p className="text-sm text-destructive">{errors.name.message}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="type">Bot Type</Label>
-                  <Select 
-                    onValueChange={(value) => setValue('type', value)}
-                    defaultValue="content-moderator"
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="content-moderator">Content Moderator</SelectItem>
-                      <SelectItem value="trending-analyzer">Trending Analyzer</SelectItem>
-                      <SelectItem value="notification-sender">Notification Sender</SelectItem>
-                      <SelectItem value="data-aggregator">Data Aggregator</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea 
-                  id="description" 
-                  {...register('description')}
-                  placeholder="Describe what this bot does..."
-                  rows={2}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="prompt_template">Prompt Template (if applicable)</Label>
-                <Textarea 
-                  id="prompt_template" 
-                  {...register('prompt_template')}
-                  placeholder="AI prompt template for this bot..."
-                  rows={4}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="schedule">Schedule</Label>
-                  <Select 
-                    onValueChange={(value) => setValue('schedule', value)}
-                    defaultValue="hourly"
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select schedule" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="minutely">Every Minute</SelectItem>
-                      <SelectItem value="hourly">Hourly</SelectItem>
-                      <SelectItem value="daily">Daily</SelectItem>
-                      <SelectItem value="weekly">Weekly</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="is_active">Active Status</Label>
-                  <div className="flex items-center space-x-2 pt-2">
-                    <Switch 
-                      id="is_active" 
-                      onCheckedChange={(checked) => setValue('is_active', checked)}
-                      defaultChecked
-                    />
-                    <Label htmlFor="is_active">
-                      Set as active immediately
-                    </Label>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isLoading}>
-                {isLoading ? "Creating..." : "Create Bot"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-      
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>Edit Bot</DialogTitle>
-            <DialogDescription>
-              Update the settings for this bot
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit(onSubmitEdit)}>
-            {/* Form fields identical to create form */}
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="edit-name">Bot Name</Label>
-                  <Input 
-                    id="edit-name" 
-                    {...register('name', { required: 'Name is required' })}
-                    placeholder="Content Moderator"
-                  />
-                  {errors.name && (
-                    <p className="text-sm text-destructive">{errors.name.message}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-type">Bot Type</Label>
-                  <Select 
-                    onValueChange={(value) => setValue('type', value)}
-                    defaultValue={selectedBot?.type}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="content-moderator">Content Moderator</SelectItem>
-                      <SelectItem value="trending-analyzer">Trending Analyzer</SelectItem>
-                      <SelectItem value="notification-sender">Notification Sender</SelectItem>
-                      <SelectItem value="data-aggregator">Data Aggregator</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-description">Description</Label>
-                <Textarea 
-                  id="edit-description" 
-                  {...register('description')}
-                  placeholder="Describe what this bot does..."
-                  rows={2}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-prompt_template">Prompt Template (if applicable)</Label>
-                <Textarea 
-                  id="edit-prompt_template" 
-                  {...register('prompt_template')}
-                  placeholder="AI prompt template for this bot..."
-                  rows={4}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="edit-schedule">Schedule</Label>
-                  <Select 
-                    onValueChange={(value) => setValue('schedule', value)}
-                    defaultValue={selectedBot?.schedule}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select schedule" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="minutely">Every Minute</SelectItem>
-                      <SelectItem value="hourly">Hourly</SelectItem>
-                      <SelectItem value="daily">Daily</SelectItem>
-                      <SelectItem value="weekly">Weekly</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-is_active">Active Status</Label>
-                  <div className="flex items-center space-x-2 pt-2">
-                    <Switch 
-                      id="edit-is_active" 
-                      onCheckedChange={(checked) => setValue('is_active', checked)}
-                      defaultChecked={selectedBot?.is_active}
-                    />
-                    <Label htmlFor="edit-is_active">
-                      Bot is active
-                    </Label>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isLoading}>
-                {isLoading ? "Updating..." : "Update Bot"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </div>
+      <div className="p-4">
+        <p className="text-sm text-muted-foreground mb-4">{bot.description || 'No description provided.'}</p>
+        
+        <div className="text-xs text-muted-foreground">
+          <div className="flex items-center gap-1 mb-1">
+            <Calendar className="h-3 w-3" />
+            <span>Schedule: {bot.schedule}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <Info className="h-3 w-3" />
+            <span>Last run: {bot.last_run ? new Date(bot.last_run).toLocaleString() : 'Never'}</span>
+          </div>
+        </div>
+        
+        <Separator className="my-4" />
+        
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onEdit}>
+            <Edit className="h-4 w-4 mr-1" />
+            Edit
+          </Button>
+          <Button variant="outline" size="sm" onClick={onDelete}>
+            <Trash className="h-4 w-4 mr-1" />
+            Delete
+          </Button>
+        </div>
+      </div>
+    </Card>
   );
 };
 

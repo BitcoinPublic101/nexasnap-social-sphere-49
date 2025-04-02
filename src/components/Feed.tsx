@@ -1,6 +1,5 @@
 
-import React, { useState, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import React, { useState } from 'react';
 import PostCard from '@/components/PostCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -9,7 +8,6 @@ import { Separator } from '@/components/ui/separator';
 import { useFeedAlgorithm } from '@/hooks/useFeedAlgorithm';
 import { Skeleton } from '@/components/ui/skeleton';
 import CreatePostCard from '@/components/CreatePostCard';
-import { PostWithAuthor } from '@/types/supabase-custom';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 
@@ -28,8 +26,8 @@ const Feed = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  const renderFeed = (postsList: PostWithAuthor[]) => {
-    if (loading && postsList.length === 0) {
+  const renderFeed = () => {
+    if (loading && posts.length === 0) {
       return (
         <>
           <Skeleton className="h-40 w-full rounded-md mb-4" />
@@ -39,13 +37,13 @@ const Feed = () => {
       );
     }
 
-    if (!loading && postsList.length === 0) {
+    if (!loading && posts.length === 0) {
       return <p className="text-center text-gray-500">No posts available.</p>;
     }
 
     return (
       <>
-        {postsList.map((post) => (
+        {posts.map((post) => (
           <PostCard key={post.id} post={post} />
         ))}
       </>
@@ -72,19 +70,19 @@ const Feed = () => {
         </TabsList>
         
         <TabsContent value="for-you">
-          {renderFeed(posts)}
+          {renderFeed()}
         </TabsContent>
         
         <TabsContent value="following">
-          {renderFeed(posts)}
+          {renderFeed()}
         </TabsContent>
         
         <TabsContent value="trending">
-          {renderFeed(posts)}
+          {renderFeed()}
         </TabsContent>
         
         <TabsContent value="latest">
-          {renderFeed(posts)}
+          {renderFeed()}
         </TabsContent>
       </Tabs>
       

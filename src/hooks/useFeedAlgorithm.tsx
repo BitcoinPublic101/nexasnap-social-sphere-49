@@ -2,10 +2,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
-import { PostWithAuthor } from '@/types/supabase-custom';
+import { PostWithAuthor, FeedSortOption } from '@/types/supabase-custom';
 import { useToast } from '@/hooks/use-toast';
-
-type FeedSortOption = 'trending' | 'new' | 'top' | 'personalized';
 
 interface UseFeedAlgorithmProps {
   initialSort?: FeedSortOption;
@@ -38,8 +36,8 @@ export function useFeedAlgorithm({
         .from('posts')
         .select(`
           *,
-          profiles(username, avatar_url),
-          squads(name)
+          profiles:author_id(username, avatar_url),
+          squads:squad_id(name)
         `)
         .eq('is_hidden', false);
       
@@ -66,6 +64,7 @@ export function useFeedAlgorithm({
           break;
         
         case 'personalized':
+        case 'following':
           if (user) {
             // Personalized feed based on user's preferences
             // First, get squads the user is following
@@ -107,9 +106,9 @@ export function useFeedAlgorithm({
       
       // Update posts - for page 1, replace all posts, otherwise append
       if (page === 1) {
-        setPosts(data as PostWithAuthor[] || []);
+        setPosts(data as unknown as PostWithAuthor[] || []);
       } else {
-        setPosts(prevPosts => [...prevPosts, ...(data as PostWithAuthor[] || [])]);
+        setPosts(prevPosts => [...prevPosts, ...(data as unknown as PostWithAuthor[] || [])]);
       }
       
       // Check if there are more posts to load
